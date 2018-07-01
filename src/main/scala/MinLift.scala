@@ -1,6 +1,5 @@
-import Token.Identifier
-
 import scala.io.Source
+import scala.collection._
 import scala.collection.immutable.Vector
 import scala.reflect.{ClassTag, classTag}
 
@@ -10,7 +9,8 @@ object MinLift {
 //    val tokens = tokenize("(+ 1 2)")
     val res = for (
        tokens <- tokenize(source);
-       ast <- parse(tokens)
+       ast <- parse(tokens);
+       _ <- (new TypeChecker).visit(ast)
     ) yield {
       println(tokens)
       pprint.pprintln(ast)
@@ -266,26 +266,124 @@ class Parser(val tokens: Vector[Token]) {
 }
 
 object Ast {
-  case class Lift(val variables: Vector[Variable], val inputTypes: Vector[Type], val body: Expression)
+  case class Lift(val variables: Vector[Variable], val inputTypes: Vector[Type], val body: Expression) {
+    def accept[T](visitor: Visitor[T]): Unit = {
+      visitor.visit(this)
+    }
+  }
 
   sealed abstract class Type
   object Type {
     case class Array(val innerType: Type, val length: Variable) extends Type
+    case class Function(val argTypes: Vector[Type], val resultType: Type) extends Type
     case object Float extends Type
+
+    case class Polymorphic(val name: String) extends Type
   }
 
   case class Variable(val name: String)
 
-  sealed abstract class Expression
+  sealed abstract class Expression {
+    def accept[T](visitor: Visitor[T]): T
+  }
   object Expression {
-    case class Apply(val callee: Expression, val args: Vector[Expression]) extends Expression
+    case class Apply(val callee: Expression, val args: Vector[Expression]) extends Expression {
+      def accept[T](visitor: Visitor[T]): T = {
+        visitor.visit(this)
+      }
+    }
 
-    case class Lambda(val args: Vector[Identifier], val body: Expression) extends Expression
+    case class Lambda(val args: Vector[Identifier], val body: Expression) extends Expression {
+      def accept[T](visitor: Visitor[T]): T = {
+        visitor.visit(this)
+      }
+    }
 //    case class Map(val f: Expression) extends Expression
 
-    case class Identifier(val value: String) extends Expression
-    case class Const[T](val value: T) extends Expression
+    case class Identifier(val value: String) extends Expression {
+      def accept[T](visitor: Visitor[T]): T = {
+        visitor.visit(this)
+      }
+    }
+    case class Const[T](val value: T) extends Expression {
+      def accept[T](visitor: Visitor[T]): T = {
+        visitor.visit(this)
+      }
+    }
   }
 }
 
+trait Visitor[T] {
+  def visit(node: Ast.Lift): T
+  def visit(node: Ast.Expression.Apply): T
+  def visit(node: Ast.Expression.Lambda): T
+  def visit(node: Ast.Expression.Identifier): T
+  def visit[U](node: Ast.Expression.Const[U]): T
+}
+
+class TypeChecker extends Visitor[Either[String, Ast.Type]] {
+  type TypeCheckerResult = Either[String, Ast.Type]
+
+  val env = mutable.Stack[mutable.Map[String, Ast.Type]]()
+  env.push(mutable.Map[String, Ast.Type]())
+
+  override def visit(node: Ast.Lift): TypeCheckerResult = {
+    // set default definitions
+    // map :: (A => B) => (A[]n => B[]n)
+    env.top += "map" -> Ast.Type.Function(
+      Vector(Ast.Type.Function(
+        Vector(Ast.Type.Polymorphic("A")),
+        Ast.Type.Polymorphic("B"))),
+      Ast.Type.Function(
+        Vector(Ast.Type.Array(Ast.Type.Polymorphic("A"), Ast.Variable("n"))),
+        Ast.Type.Array(Ast.Type.Polymorphic("B"), Ast.Variable("n"))))
+
+    node.variables.zip(node.inputTypes).foreach { case (v, t) =>
+      env.top += v.name -> t
+    }
+    node.body.accept(this)
+  }
+
+  override def visit(node: Ast.Expression.Apply): TypeCheckerResult = {
+    node.callee.accept(this).flatMap(callee => {
+      // convert Vector[Either[String, Type]] to Either[String, Vector[Type]]
+      val args = node.args.map(arg => arg.accept(this)).foldLeft(Right(Vector.empty[Ast.Type]) : Either[String, Vector[Ast.Type]])((args, arg) => {
+        arg match {
+          case Right(t) => args.map(args => args :+ t)
+          case Left(err) => Left(err)
+        }
+      })
+
+      // check types passed to the function
+      args.flatMap(args => {
+        callee match {
+          case Ast.Type.Function(argTypes, resultType) => {
+            val satisfiedArgTypes = args.zip(argTypes).forall { case (actual, expected) => actual.equals(expected) }
+
+            if (satisfiedArgTypes) {
+              Right(resultType)
+            }
+            else {
+              Left(s"type mismatch. expected ${argTypes}, actual: ${args}")
+            }
+          }
+          case _ => {
+            Left(s"callee(${callee}) is not function")
+          }
+        }
+      })
+    })
+  }
+
+  override def visit(node: Ast.Expression.Lambda): TypeCheckerResult= ???
+
+  override def visit(node: Ast.Expression.Identifier): TypeCheckerResult = {
+    // FIXME: 上の階層もたどる
+    env.top.get(node.value).toRight(s"undefined variable ${node.value}")
+  }
+
+  override def visit[U](node: Ast.Expression.Const[U]): TypeCheckerResult = node match {
+    case v:Ast.Expression.Const[Float] => Right(Ast.Type.Float)
+  }
+}
 
