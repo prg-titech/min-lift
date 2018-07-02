@@ -17,6 +17,7 @@ object MinLift {
       println(tokens)
       pprint.pprintln(ast)
       println("success checking type!")
+      println((new PrintVisitor).visit(ast))
     }
 
     if (res.isLeft) {
@@ -277,20 +278,30 @@ object Ast {
 
   sealed abstract class Type
   object Type {
-    case class Array(val innerType: Type, val length: Variable) extends Type
-    case class Function(val argTypes: Vector[Type], val resultType: Type) extends Type
+    case class Array(val innerType: Type, val length: Variable) extends Type {
+      override def toString: String = s"${innerType}[${length}]"
+    }
+    case class Function(val argTypes: Vector[Type], val resultType: Type) extends Type {
+      override def toString: String = s"(${argTypes.mkString(", ")}) => ${resultType}"
+    }
     case object Float extends Type
     case object Double extends Type
     case object Int extends Type
 
-    case class Polymorphic(val name: String) extends Type
+    case class Polymorphic(val name: String) extends Type {
+      override def toString: String = name
+    }
 
     case object Unfixed extends Type
   }
 
-  case class Variable(val name: String)
+  case class Variable(val name: String) {
+    override def toString: String = name
+  }
 
   sealed abstract class Expression {
+    var ty: Type = Type.Unfixed
+
     def accept[T](visitor: Visitor[T]): T
   }
   object Expression {
@@ -405,6 +416,17 @@ class TypeChecker extends Visitor[Either[String, (Ast.Expression, Ast.Type)]] {
               case _ => false
             }
 
+            def resolveType(ty: Ast.Type): Ast.Type = ty match {
+              case Ast.Type.Array(innerType, length) => Ast.Type.Array(resolveType(innerType), length)
+              case Ast.Type.Polymorphic(x) => {
+//                polymorphicMap.get(x).getOrElse(ty)
+                println(polymorphicMap)
+                polymorphicMap.get(x).getOrElse(Ast.Type.Polymorphic(s"<Unresolved ${x}>"))
+              }
+              case Ast.Type.Unfixed => Ast.Type.Unfixed
+              case _ => ty
+            }
+
             def satisfiedType(actual: Ast.Type, expected: Ast.Type): Boolean = (actual, expected) match {
               case (Ast.Type.Unfixed, _) => {
                 // check later
@@ -469,7 +491,15 @@ class TypeChecker extends Visitor[Either[String, (Ast.Expression, Ast.Type)]] {
 
               result.flatMap { case (expr, actualResultType) =>
                 val satisfiedResultType = satisfiedType(actualResultType, expectedResultType)
+                println(actualResultType, expectedResultType)
                 if (satisfiedResultType) {
+
+                  node.callee.ty = Ast.Type.Function(
+                    expectedArgTypes.map(ty => resolveType(ty)),
+                    resolveType(expectedResultType)
+                  )
+                  node.ty = expectedResultType
+
                   Right((expr, expectedResultType))
                 }
                 else {
@@ -490,17 +520,20 @@ class TypeChecker extends Visitor[Either[String, (Ast.Expression, Ast.Type)]] {
   }
 
   override def visit(node: Ast.Expression.Lambda): TypeCheckerResult= {
-    Right((node, Ast.Type.Function(node.args.map(_ => Ast.Type.Unfixed), Ast.Type.Unfixed)))
+    val ty = Ast.Type.Function(node.args.map(_ => Ast.Type.Unfixed), Ast.Type.Unfixed)
+    node.ty = ty
+    Right((node, ty))
   }
 
-  override def visit(node: Ast.Expression.Map): TypeCheckerResult = {
-    Left("cannot evaluate Map directly")
-  }
+  override def visit(node: Ast.Expression.Map): TypeCheckerResult = ???
 
   override def visit(node: Ast.Expression.Identifier): TypeCheckerResult = {
     for (local <- env) {
       local.get(node.value) match {
-        case Some(value) => return Right(value)
+        case Some(value) => {
+          node.ty = value._2
+          return Right(value)
+        }
         case None => ()
       }
     }
@@ -509,13 +542,61 @@ class TypeChecker extends Visitor[Either[String, (Ast.Expression, Ast.Type)]] {
   }
 
   override def visit[U](node: Ast.Expression.Const[U]): TypeCheckerResult = node match {
-    case Ast.Expression.Const(value) => value match {
-      case v:Float => Right((node, Ast.Type.Float))
-      case v:Double => Right((node, Ast.Type.Double))
-      case v:Int => Right((node, Ast.Type.Int))
+    case Ast.Expression.Const(value) => {
+      val ty = value match {
+        case v:Float => Ast.Type.Float
+        case v:Double => Ast.Type.Double
+        case v:Int => Ast.Type.Int
+      }
+      node.ty = ty
+      Right((node, ty))
     }
   }
 
   override def visit(node: Ast.Expression.Undefined): TypeCheckerResult = ???
 }
 
+class PrintVisitor extends Visitor[String] {
+  def pad(str: String): String = {
+    str.split("\n").map(l => s"  ${l}").mkString("\n")
+  }
+
+  override def visit(node: Ast.Lift): String = {
+    s"""
+       |(lift
+       |  ${node.variables.mkString(", ")}
+       |  ${node.inputTypes.mkString(", ")}${pad(node.body.accept(this))})
+    """.stripMargin
+  }
+
+  override def visit[U](node: Expression.Apply[U]): String = {
+    val args = node.args.map {
+      case arg:Ast.Expression => arg.accept(this)
+      case arg:Ast.Type => arg.toString
+    }.mkString(" ")
+    s"""
+       |(${node.callee.accept(this)}${pad(args)}) : ${node.ty}
+     """.stripMargin
+  }
+
+  override def visit(node: Expression.Lambda): String = {
+    s"""
+       |(lambda
+       |  (${node.args.mkString(" ")})${pad(node.body.accept(this))}) : ${node.ty}
+     """.stripMargin
+  }
+
+  override def visit(node: Expression.Map): String = ???
+
+  override def visit(node: Expression.Identifier): String = {
+    s"${node.value} : ${node.ty}"
+  }
+
+  override def visit[U](node: Expression.Const[U]): String = {
+    s"${node.value} : ${node.ty}"
+  }
+
+  override def visit(node: Expression.Undefined): String = {
+    "undefined"
+  }
+}
