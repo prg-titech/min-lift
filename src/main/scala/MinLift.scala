@@ -231,26 +231,28 @@ class Parser(val tokens: Vector[Token]) {
   }
 
   def consume(token: Token): Either[ErrType, Token] = {
-    val curr = tokens(pos)
-    if (curr.equals(token)) {
-      pos += 1
-      Right(curr)
-    }
-    else {
-      Left(s"unexpected '${curr}', expected: '${token}'")
-    }
+    tokens.lift(pos).toRight(s"unexpected EOF, expected: ${token}").flatMap(curr => {
+      if (curr.equals(token)) {
+        pos += 1
+        Right(curr)
+      }
+      else {
+        Left(s"unexpected '${curr}', expected: '${token}'")
+      }
+    })
   }
 
   def consume[T <: Token : ClassTag](): Either[ErrType, Token] = {
-    val curr = tokens(pos)
     val klass = classTag[T].runtimeClass
-    if (klass.isInstance(curr)) {
-      pos += 1
-      Right(curr)
-    }
-    else {
-      Left(s"unexpected '${curr}', expected: '${klass.getName}'")
-    }
+    tokens.lift(pos).toRight(s"unexpected EOF, expected: ${klass.getName}").flatMap(curr => {
+      if (klass.isInstance(curr)) {
+        pos += 1
+        Right(curr)
+      }
+      else {
+        Left(s"unexpected '${curr}', expected: '${klass.getName}'")
+      }
+    })
   }
 
   def _while[T](nest: Boolean, cond: Token => Boolean, f: Token => Either[ErrType, T]): Either[ErrType, Vector[T]] = {
