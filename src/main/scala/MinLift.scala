@@ -1,3 +1,5 @@
+import Ast.Expression
+
 import scala.io.Source
 import scala.collection._
 import scala.collection.immutable.Vector
@@ -10,11 +12,12 @@ object MinLift {
     val res = for (
        tokens <- tokenize(source);
        ast <- parse(tokens);
-       _ <- (new TypeChecker).visit(ast)
+       _ <- (new TypeChecker).visit(ast);
+       _ <- MemoryAllocator.inferAddressSpace(ast)
     ) yield {
       println(tokens)
       pprint.pprintln(ast)
-      println("success checking type!")
+      println("success checking type and allocating memory!")
       println((new PrintVisitor).visit(ast))
     }
 
@@ -164,7 +167,7 @@ class Parser(val tokens: Vector[Token]) {
       case Token.LParen => parseApply()
       case cur@_ => {
         val expr = cur match {
-          case Token.Identifier(value) => Right(Expression.Identifier(value))
+          case Token.Identifier(value) => Right(Expression.Identifier(value, false))
           case Token.FloatLiteral(value) => Right(Expression.Const[Float](value))
           case Token.DoubleLiteral(value) => Right(Expression.Const[Double](value))
           case Token.IntLiteral(value) => Right(Expression.Const[Int](value))
@@ -183,7 +186,7 @@ class Parser(val tokens: Vector[Token]) {
         case Token.Identifier("lambda") => {
           for (
             _ <- consume(Token.Identifier("lambda"));
-            args <- parseList(parseIdentifier);
+            args <- parseList(parseParam);
             body <- parseExpression();
             _ <- consume(Token.RParen)
           ) yield {
@@ -206,7 +209,14 @@ class Parser(val tokens: Vector[Token]) {
   def parseIdentifier(): Either[ErrType, Expression.Identifier] = {
     consume[Token.Identifier].map(tok => {
       val Token.Identifier(value) = tok
-      Expression.Identifier(value)
+      Expression.Identifier(value, false)
+    })
+  }
+
+  def parseParam(): Either[ErrType, Expression.Identifier] = {
+    consume[Token.Identifier].map(tok => {
+      val Token.Identifier(value) = tok
+      Expression.Identifier(value, true)
     })
   }
 
@@ -282,9 +292,12 @@ object Ast {
     case class Function(val argTypes: Vector[Type], val resultType: Type) extends Type {
       override def toString: String = s"(${argTypes.mkString(", ")}) => ${resultType}"
     }
-    case object Float extends Type
-    case object Double extends Type
-    case object Int extends Type
+    class Scalar extends Type
+    case object Float extends Scalar
+    case object Double extends Scalar
+    case object Int extends Scalar
+
+    // TODO: Add vector type and tuple type
 
     case class Polymorphic(val name: String) extends Type {
       override def toString: String = s"<${name}>"
@@ -299,6 +312,7 @@ object Ast {
 
   sealed abstract class Expression {
     var ty: Type = Type.Unfixed
+    var addressSpace: Option[MemoryAllocator.AddressSpace] = None
 
     def accept[T](visitor: Visitor[T]): T
   }
@@ -321,11 +335,12 @@ object Ast {
       }
     }
 
-    case class Identifier(val value: String) extends Expression {
+    case class Identifier(val value: String, val isParam: Boolean) extends Expression {
       def accept[T](visitor: Visitor[T]): T = {
         visitor.visit(this)
       }
     }
+
     case class Const[U](val value: U) extends Expression {
       def accept[T](visitor: Visitor[T]): T = {
         visitor.visit(this)
@@ -350,6 +365,7 @@ trait Visitor[T] {
   def visit(node: Ast.Expression.Undefined): T
 }
 
+// check and infer types by abstract interpretation
 class TypeChecker extends Visitor[Either[String, (Ast.Expression, Ast.Type)]] {
   type Value = (Ast.Expression, Ast.Type)
   type TypeCheckerResult = Either[String, Value]
@@ -360,8 +376,8 @@ class TypeChecker extends Visitor[Either[String, (Ast.Expression, Ast.Type)]] {
 
   override def visit(node: Ast.Lift): TypeCheckerResult = {
     // set default definitions
-    // map :: (A => B) => (A[]n => B[]n)
-    env.top += "map" -> (
+    // mapSeq :: (A => B) => (A[]n => B[]n)
+    env.top += "mapSeq" -> (
       Ast.Expression.Undefined(),
       Ast.Type.Function(
         Vector(Ast.Type.Function(
@@ -473,9 +489,9 @@ class TypeChecker extends Visitor[Either[String, (Ast.Expression, Ast.Type)]] {
                 }
                 case Ast.Expression.Undefined() => {
                   // built-in function
-                  val Ast.Expression.Identifier (name) = node.callee
+                  val Ast.Expression.Identifier (name, _) = node.callee
                   val result = name match {
-                    case "map" => {
+                    case "mapSeq" => {
                       val f = actualArgs (0)._1
                       Ast.Expression.Map (f)
                     }
@@ -584,14 +600,77 @@ class PrintVisitor extends Visitor[String] {
   override def visit(node: Ast.Expression.Map): String = ???
 
   override def visit(node: Ast.Expression.Identifier): String = {
-    s"${node.value}: ${node.ty}"
+    s"${node.value}: ${node.ty}@${node.addressSpace}"
   }
 
   override def visit[U](node: Ast.Expression.Const[U]): String = {
-    s"${node.value}: ${node.ty}"
+    s"${node.value}: ${node.ty}@${node.addressSpace}"
   }
 
   override def visit(node: Ast.Expression.Undefined): String = {
     "undefined"
+  }
+}
+
+// Allocation memory to expression by P79 Algorithm 1
+// in "Lift: A Functional Data-Parallel IR for High-Performance GPU Code Generation"
+//    Michel Steuwer, Toomas Remmelg, Christophe Dubach
+object MemoryAllocator  {
+  sealed abstract class AddressSpace
+  case object PrivateMemory extends AddressSpace
+  case object LocalMemory extends AddressSpace
+  case object GlobalMemory extends AddressSpace
+
+  def inferAddressSpace(lift: Ast.Lift): Either[Unit, Unit] = {
+    val Ast.Expression.Lambda(params, body) = lift.body
+    lift.inputTypes.zip(params).foreach { case (inputType, param) =>
+      if (inputType.isInstanceOf[Ast.Type.Scalar]) {
+        param.addressSpace = Some(PrivateMemory)
+      }
+      else {
+        param.addressSpace = Some(GlobalMemory)
+      }
+    }
+    inferAddressSpaceExpr(body, None)
+
+    Right(())
+  }
+
+  def inferAddressSpaceExpr(expr: Ast.Expression, writeTo: Option[AddressSpace]): Unit = {
+    import Ast.Expression._
+
+    println("inferASExpr", expr, writeTo)
+
+    expr match {
+      case Const(_) => expr.addressSpace = Some(PrivateMemory)
+      case Identifier(_, true) /* as Param */ => assert(expr.addressSpace != None)
+      case Apply(f, argsAny) => {
+        val args = argsAny.map { case arg:Expression => arg }
+
+        args.foreach(arg => inferAddressSpaceExpr(arg, writeTo))
+
+        f match {
+          // TODO implement following expressions
+          // case UserFun
+          // case toPrivate
+          // case toLocal
+          // case toGlobal
+          // case Reduce
+          // case Iterate
+          case l@Lambda(_, _) => inferAddressSpaceApply(l, args, writeTo)
+          // case Map(l@Lambda(_, _)) => inferAddressSpaceApply(l, args, writeTo)
+          case Identifier("mapSeq", false) => inferAddressSpaceExpr(args(0), writeTo)
+          case Apply(_, _) => inferAddressSpaceExpr(f, writeTo)
+          case _ => expr.addressSpace = args.lift(0).flatMap(_.addressSpace) // not args.addressSpace
+        }
+      }
+      case Lambda(_, body) => inferAddressSpaceExpr(body, writeTo)
+      case _ => {}
+    }
+  }
+
+  def inferAddressSpaceApply(lambda: Ast.Expression.Lambda, args: Vector[Expression], writeTo: Option[AddressSpace]): Unit = {
+    lambda.args.zip(args).foreach { case (p, a) => p.addressSpace = a.addressSpace }
+    inferAddressSpaceExpr(lambda.body, writeTo)
   }
 }
