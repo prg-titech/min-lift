@@ -14,13 +14,16 @@ object MinLift {
        tokens <- Token.tokenize(source);
        ast <- Parser.parse(tokens);
        _ <- TypeChecker.check(ast);
-       _ <- MemoryAllocator.inferAddressSpace(ast)
+       norm <- Right(Normalizer.normalize(ast));
+       _ <- MemoryAllocator.inferAddressSpace(norm);
+       code <- Right(CodeGenerator.generate(norm))
     ) yield {
       println(tokens)
       pprint.pprintln(ast)
       println("success checking type and allocating memory!")
       println(AstPrinter.print(ast))
-      println(AstPrinter.print((new Normalizer).visit(ast).asInstanceOf[Lift]))
+      println(AstPrinter.print(norm))
+      println(code)
 //      println("output code\n")
 //      println((new CodeGenerator).visit(ast))
     }

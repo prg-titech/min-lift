@@ -20,15 +20,40 @@ class CodeGenerator extends Visitor[String] {
     """.stripMargin
   }
 
-  override def visit[U](node: Expression.Apply): String = ???
+  override def visit[U](node: Expression.Apply): String = {
+    node.callee match {
+      case Expression.Identifier("mapSeq", false) => {
+        val Expression.Lambda(args, body) = node.args(0)
+        val Expression.Identifier(collectionName, _) = node.args(1)
+        val Type.Array(inner, length) = node.args(1).ty
+        s"""
+           |for (int i = 0; i < ${length.name}; i++) {
+           |  ${inner.toCL} ${args(0).value} = ${collectionName}[i];
+           |  result[i] = ${node.args(0).accept(this)};
+           |}
+         """.stripMargin
+      }
+      case Expression.Identifier("*", false) => {
+        s"""
+           |${node.args(0).accept(this)} * ${node.args(1).accept(this)}
+         """.stripMargin
+      }
+    }
+  }
 
-  override def visit(node: Expression.Lambda) = ???
+  override def visit(node: Expression.Lambda): String = {
+    node.body.accept(this)
+  }
 
   override def visit(node: Expression.Map) = ???
 
-  override def visit(node: Expression.Identifier) = node.value
+  override def visit(node: Expression.Identifier): String = node.value
 
-  override def visit[U](node: Expression.Const[U]) = ???
+  override def visit[U](node: Expression.Const[U]): String = node.value.toString
 
   override def visit(node: Expression.Undefined) = ???
+}
+
+object CodeGenerator {
+  def generate(node: Lift) = (new CodeGenerator).visit(node)
 }

@@ -18,7 +18,7 @@ object Type {
   }
   case class Function(val argTypes: Vector[Type], val resultType: Type) extends Type {
     override def toString: String = s"(${argTypes.mkString(", ")}) => ${resultType}"
-    override def toCL: String = ???
+    override def toCL: String = resultType.toCL // ?
   }
   abstract class Scalar extends Type
   case object Float extends Scalar {
