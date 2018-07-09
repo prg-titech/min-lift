@@ -48,8 +48,8 @@ class MinLiftSpec extends FunSpec {
       assert(TypeChecker.check(lift).isInstanceOf[Either[String, (Expression, Type)]])
       val lambdaOfMapSeq = lift
         .body.asInstanceOf[Lambda]
-          .body.asInstanceOf[Apply[Expression]]
-          .callee.asInstanceOf[Apply[Expression]] // mapSeq
+          .body.asInstanceOf[Apply]
+          .callee.asInstanceOf[Apply] // mapSeq
         .args(0).asInstanceOf[Lambda]
       assertResult(Type.Function(Vector(Type.Float), Type.Float))(lambdaOfMapSeq.ty)
     }

@@ -20,8 +20,9 @@ object MinLift {
       pprint.pprintln(ast)
       println("success checking type and allocating memory!")
       println(AstPrinter.print(ast))
-      println("output code\n")
-      println((new CodeGenerator).visit(ast))
+      println(AstPrinter.print((new Normalizer).visit(ast).asInstanceOf[Lift]))
+//      println("output code\n")
+//      println((new CodeGenerator).visit(ast))
     }
 
     if (res.isLeft) {

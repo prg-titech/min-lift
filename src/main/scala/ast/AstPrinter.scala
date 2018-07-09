@@ -12,11 +12,8 @@ class AstPrinter extends Visitor[String] {
        |  (${node.inputTypes.mkString(", ")})${pad(node.body.accept(this))})""".stripMargin
   }
 
-  override def visit[U](node: Expression.Apply[U]): String = {
-    val args = node.args.map {
-      case arg:Expression => arg.accept(this)
-      case arg:Type => arg.toString
-    }.mkString(" ")
+  override def visit[U](node: Expression.Apply): String = {
+    val args = node.args.map(_.accept(this)).mkString(" ")
     s"""
        |(${node.callee.accept(this)}${pad(args)}): ${node.ty}""".stripMargin
   }

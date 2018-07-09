@@ -1,6 +1,8 @@
 package ast
 
-case class Lift(val variables: Vector[Variable], val inputTypes: Vector[Type], val body: Expression) {
+sealed abstract class Node
+
+case class Lift(val variables: Vector[Variable], val inputTypes: Vector[Type], val body: Expression) extends Node {
   def accept[T](visitor: Visitor[T]): Unit = {
     visitor.visit(this)
   }
@@ -45,14 +47,14 @@ case class Variable(val name: String) {
   override def toString: String = name
 }
 
-sealed abstract class Expression {
+sealed abstract class Expression extends Node {
   var ty: Type = Type.Unfixed
   var addressSpace: Option[pass.MemoryAllocator.AddressSpace] = None
 
   def accept[T](visitor: Visitor[T]): T
 }
 object Expression {
-  case class Apply[U](val callee: Expression, val args: Vector[U]) extends Expression {
+  case class Apply(val callee: Expression, val args: Vector[Expression]) extends Expression {
     def accept[T](visitor: Visitor[T]): T = {
       visitor.visit(this)
     }
@@ -85,6 +87,13 @@ object Expression {
   case class Undefined() extends Expression {
     def accept[T](visitor: Visitor[T]): T = {
       visitor.visit(this)
+    }
+  }
+  object Undefined {
+    def withType(ty: Type): Undefined = {
+      val undef = Undefined()
+      undef.ty = ty
+      undef
     }
   }
 }

@@ -32,18 +32,16 @@ class TypeChecker extends Visitor[Either[String, (Expression, Type)]] {
 
     val root = node.body.accept(this)
     root.flatMap(root => {
-      Expression.Apply(root._1, node.inputTypes).accept(this)
+      val inputTypes = node.inputTypes.map(Expression.Undefined.withType(_))
+      Expression.Apply(root._1, inputTypes).accept(this)
     })
   }
 
-  override def visit[U](node: Expression.Apply[U]): TypeCheckerResult = {
+  override def visit[U](node: Expression.Apply): TypeCheckerResult = {
     node.callee.accept(this).flatMap(callee => {
       // convert Vector[Either[E, X]] to Either[E, Vector[X]]
       val actualArgs = node.args
-        .map{
-          case arg:Expression => arg.accept(this)
-          case arg:Type => Right((Expression.Undefined(), arg))
-        }
+        .map(_.accept(this))
         .foldLeft(Right(Vector.empty[Value]) : Either[String, Vector[Value]])((args, arg) => {
           arg match {
             case Right(t) => args.map(_ :+ t)
@@ -117,7 +115,7 @@ class TypeChecker extends Visitor[Either[String, (Expression, Type)]] {
                 }
                 case Expression.Map(f) => {
                   val Type.Array(innerType, length) = actualArgs(0)._2
-                  val result = Expression.Apply(f, Vector(innerType)).accept(this)
+                  val result = Expression.Apply(f, Vector(Expression.Undefined.withType(innerType))).accept(this)
 
                   result.map { case (_, ty) =>
                     f.ty = Type.Function(Vector(innerType), ty)
@@ -205,7 +203,9 @@ class TypeChecker extends Visitor[Either[String, (Expression, Type)]] {
     }
   }
 
-  override def visit(node: Expression.Undefined): TypeCheckerResult = ???
+  override def visit(node: Expression.Undefined): TypeCheckerResult = {
+    Right(node, node.ty)
+  }
 }
 
 object TypeChecker {

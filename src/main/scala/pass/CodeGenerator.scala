@@ -20,7 +20,7 @@ class CodeGenerator extends Visitor[String] {
     """.stripMargin
   }
 
-  override def visit[U](node: Expression.Apply[U]): String = ???
+  override def visit[U](node: Expression.Apply): String = ???
 
   override def visit(node: Expression.Lambda) = ???
 
