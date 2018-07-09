@@ -19,6 +19,8 @@ object MinLift {
       pprint.pprintln(ast)
       println("success checking type and allocating memory!")
       println((new PrintVisitor).visit(ast))
+      println("output code\n")
+      println(CodeGenerator.generateLift(ast))
     }
 
     if (res.isLeft) {
@@ -286,26 +288,39 @@ object Ast {
     }
   }
 
-  sealed abstract class Type
+  sealed abstract class Type {
+    def toCL: String
+  }
   object Type {
     case class Array(val innerType: Type, val length: Variable) extends Type {
       override def toString: String = s"${innerType}[${length}]"
+      override def toCL: String = s"${innerType.toCL}*"
     }
     case class Function(val argTypes: Vector[Type], val resultType: Type) extends Type {
       override def toString: String = s"(${argTypes.mkString(", ")}) => ${resultType}"
+      override def toCL: String = ???
     }
-    class Scalar extends Type
-    case object Float extends Scalar
-    case object Double extends Scalar
-    case object Int extends Scalar
+    abstract class Scalar extends Type
+    case object Float extends Scalar {
+      override def toCL: String = "float"
+    }
+    case object Double extends Scalar {
+      override def toCL: String = "double"
+    }
+    case object Int extends Scalar {
+      override def toCL: String = "int"
+    }
 
     // TODO: Add vector type and tuple type
 
     case class Polymorphic(val name: String) extends Type {
       override def toString: String = s"<${name}>"
+      override def toCL: String = ???
     }
 
-    case object Unfixed extends Type
+    case object Unfixed extends Type {
+      override def toCL: String = ???
+    }
   }
 
   case class Variable(val name: String) {
@@ -614,7 +629,7 @@ class PrintVisitor extends Visitor[String] {
   }
 }
 
-// Allocation memory to expression by P79 Algorithm 1
+// Allocation memory to expression by the algorithm based on "by P79 Algorithm 1"
 // in "Lift: A Functional Data-Parallel IR for High-Performance GPU Code Generation"
 //    Michel Steuwer, Toomas Remmelg, Christophe Dubach
 object MemoryAllocator  {
@@ -676,3 +691,36 @@ object MemoryAllocator  {
     inferAddressSpaceExpr(lambda.body, writeTo)
   }
 }
+
+class CodeGenerator extends Visitor[String] {
+  override def visit(node: Ast.Lift): String = {
+    val Ast.Expression.Lambda(params, body) = node.body
+
+    def generateParam(ty: Ast.Type, param: Ast.Expression.Identifier): String = {
+      s"const global ${ty.toCL} restrict ${param.value}"
+    }
+
+    s"""
+      |kernel void KERNEL(
+      |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
+      |  global ${body.ty.toCL} result,
+      |  ${node.variables.map(v => s"int ${v.name}").mkString(", ")}) {
+      |     ${body.accept(this)}
+      |  }
+    """.stripMargin
+  }
+
+  override def visit[U](node: Expression.Apply[U]): String = {
+  }
+
+  override def visit(node: Expression.Lambda) = ???
+
+  override def visit(node: Expression.Map) = ???
+
+  override def visit(node: Expression.Identifier) = node.value
+
+  override def visit[U](node: Expression.Const[U]) = ???
+
+  override def visit(node: Expression.Undefined) = ???
+}
+
