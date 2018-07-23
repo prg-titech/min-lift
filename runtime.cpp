@@ -3,11 +3,14 @@
 #include <iostream>
 #include <cstdlib>
 #include <fstream>
+#include <cmath>
 
 #define CL_HPP_ENABLE_EXCEPTIONS
 #define CL_HPP_MINIMUM_OPENCL_VERSION 100
 #define CL_HPP_TARGET_OPENCL_VERSION 120
 #include <CL/cl2.hpp>
+
+const int CHUNK_SIZE = 5;
 
 int main(int argc, char *argv[])
 {
@@ -58,7 +61,7 @@ int main(int argc, char *argv[])
     queue.enqueueWriteBuffer(xs, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_xs));
 
     queue.enqueueNDRangeKernel(
-        kernel, cl::NullRange, cl::NDRange(4, 4), cl::NullRange, nullptr, &event);
+        kernel, cl::NullRange, cl::NDRange(std::ceil(N / static_cast<float>(CHUNK_SIZE))), cl::NullRange, nullptr, &event);
     event.wait();
 
     queue.enqueueReadBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_result));
