@@ -16,7 +16,6 @@ class CodeGenerator extends Visitor[String] {
       |  global ${body.ty.toCL} result,
       |  ${node.variables.map(v => s"int ${v.name}").mkString(", ")}) {
       |     int gid = get_global_id(0);
-      |     printf("thread # = %d\\n", gid);
       |     ${body.accept(this)}
       |  }
     """.stripMargin

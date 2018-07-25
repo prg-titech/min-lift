@@ -14,6 +14,11 @@ const int CHUNK_SIZE = 5;
 
 int main(int argc, char *argv[])
 {
+  if (argc != 3) {
+    std::cerr << "Usage: " << argv[0] << " FILE INPUT_DATA" << std::endl;
+    return 1;
+  }
+
   std::ifstream ifs(argv[1]);
   if (ifs.fail()) {
     std::cerr << "Cannot read '" << argv[1] << "'" << std::endl;
@@ -44,9 +49,14 @@ int main(int argc, char *argv[])
 
     cl::Kernel kernel(program, "KERNEL");
 
-    const int N = 8;
-    float raw_xs[] = {1.0f, 1.0f, 4.0f, 5.0f, 1.0f, 4.0f, 1.9f, 1.9f};
-    float raw_result[16];
+    std::vector<float> raw_xs;
+    {
+      std::ifstream ifs(argv[2]);
+      float v;
+      while (ifs >> v) raw_xs.push_back(v);
+    }
+    const int N = raw_xs.size();
+
     cl::Buffer xs(context, CL_MEM_READ_WRITE, sizeof(float) * N);
     cl::Buffer result(context, CL_MEM_READ_WRITE, sizeof(float) * N);
 
@@ -58,17 +68,18 @@ int main(int argc, char *argv[])
     cl::Event event;
     cl::CommandQueue queue(context, devices[0], CL_QUEUE_PROFILING_ENABLE);
 
-    queue.enqueueWriteBuffer(xs, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_xs));
+    queue.enqueueWriteBuffer(xs, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_xs.data()));
 
     queue.enqueueNDRangeKernel(
         kernel, cl::NullRange, cl::NDRange(std::ceil(N / static_cast<float>(CHUNK_SIZE))), cl::NullRange, nullptr, &event);
     event.wait();
 
-    queue.enqueueReadBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_result));
+    std::vector<float> raw_result(raw_xs.size());
+    queue.enqueueReadBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_result.data()));
 
     std::cout << "raw_result = ";
-    for (int i = 0; i < N; i++) {
-      std::cout << raw_result[i] << ", ";
+    for (auto v : raw_result) {
+      std::cout << v << ", ";
     }
     std::cout << std::endl;
 
