@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
     kernel.setArg(2, sizeof(cl_N), &cl_N);
 
     cl::Event event;
-    cl::CommandQueue queue(context, devices[0]);
+    cl::CommandQueue queue(context, devices[0], CL_QUEUE_PROFILING_ENABLE);
 
     queue.enqueueWriteBuffer(xs, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_xs));
 
@@ -71,6 +71,10 @@ int main(int argc, char *argv[])
       std::cout << raw_result[i] << ", ";
     }
     std::cout << std::endl;
+
+    cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+    cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+    std::cout << "execution time: " << static_cast<double>(end-start)*1e-3f << " us" << std::endl;
 
     return 0;
   } catch (cl::Error const& ex) {
