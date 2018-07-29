@@ -1,5 +1,6 @@
 a.out
 runtime
+profiler
 *.cl
 
 # Created by https://www.gitignore.io/api/sbt,scala,intellij

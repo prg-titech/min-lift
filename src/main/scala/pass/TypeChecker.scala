@@ -24,6 +24,20 @@ class TypeChecker extends Visitor[Either[String, (Expression, Type)]] {
         Type.Function(
           Vector(Type.Array(Type.Polymorphic("A"), Variable("N"))),
           Type.Array(Type.Polymorphic("B"), Variable("N")))))
+    // o :: (B => C) => (A => B) => (A => C)
+    env.top += "o" -> (
+      Expression.Undefined(),
+      Type.Function(
+        Vector(
+          Type.Function(
+            Vector(Type.Polymorphic("B")),
+            Type.Polymorphic("C")),
+          Type.Function(
+            Vector(Type.Polymorphic("A")),
+            Type.Polymorphic("B"))),
+        Type.Function(
+          Vector(Type.Polymorphic("A")),
+          Type.Polymorphic("C"))))
     env.top += "*" -> (
       Expression.Undefined(),
       Type.Function(
