@@ -12,6 +12,7 @@ sealed abstract class Type {
   def toCL: String
 }
 object Type {
+  /*
   case class Array(val innerType: Type, val length: Variable) extends Type {
     override def toString: String = s"${innerType}[${length}]"
     override def toCL: String = s"${innerType.toCL}*"
@@ -30,6 +31,7 @@ object Type {
   case object Int extends Scalar {
     override def toCL: String = "int"
   }
+  */
 
   // TODO: Add vector type and tuple type
 
