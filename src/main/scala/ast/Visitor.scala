@@ -1,11 +1,11 @@
 package ast
 
-trait Visitor[T] {
-  def visit(node: Lift): T
-  def visit[U](node: Expression.Apply): T
-  def visit(node: Expression.Lambda): T
-  def visit(node: Expression.Map): T
-  def visit(node: Expression.Identifier): T
-  def visit[U](node: Expression.Const[U]): T
-  def visit(node: Expression.Undefined): T
+trait Visitor[A, R] {
+  def visit(node: Lift, arg: A): R
+  def visit(node: Expression.Apply, arg: A): R
+  def visit(node: Expression.Lambda, arg: A): R
+  def visit(node: Expression.Map, arg: A): R
+  def visit(node: Expression.Identifier, arg: A): R
+  def visit[C](node: Expression.Const[C], arg: A): R
+  def visit(node: Expression.Undefined, arg: A): R
 }

@@ -3,8 +3,8 @@ package ast
 sealed abstract class Node
 
 case class Lift(val variables: Vector[Variable], val inputTypes: Vector[Type], val body: Expression) extends Node {
-  def accept[T](visitor: Visitor[T]): Unit = {
-    visitor.visit(this)
+  def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+    visitor.visit(this, arg)
   }
 }
 
@@ -33,13 +33,19 @@ object Type {
 
   // TODO: Add vector type and tuple type
 
-  case class Polymorphic(val name: String) extends Type {
+  case class TypeVar(val name: String) extends Type {
     override def toString: String = s"<${name}>"
     override def toCL: String = ???
   }
 
-  case object Unfixed extends Type {
-    override def toCL: String = ???
+  case class Arrow(val argType: Type, val resultType: Type) extends Type {
+    override def toString: String = s"$argType => $resultType"
+    override def toCL: String = resultType.toCL // ?
+  }
+
+  case class TypeCon(val name: String, innerTypes: Vector[Type]) extends Type {
+    override def toString: String = s"$name[${innerTypes.mkString(", ")}]"
+    override def toCL: String = name // ?
   }
 }
 
@@ -48,45 +54,45 @@ case class Variable(val name: String) {
 }
 
 sealed abstract class Expression extends Node {
-  var ty: Type = Type.Unfixed
+  val ty = TypeVar
   var addressSpace: Option[pass.MemoryAllocator.AddressSpace] = None
 
-  def accept[T](visitor: Visitor[T]): T
+  def accept[A, R](visitor: Visitor[A, R], arg: A): R
 }
 object Expression {
   case class Apply(val callee: Expression, val args: Vector[Expression]) extends Expression {
-    def accept[T](visitor: Visitor[T]): T = {
-      visitor.visit(this)
+    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+      visitor.visit(this, arg)
     }
   }
 
   case class Lambda(val args: Vector[Identifier], val body: Expression) extends Expression {
-    def accept[T](visitor: Visitor[T]): T = {
-      visitor.visit(this)
+    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+      visitor.visit(this, arg)
     }
   }
 
   case class Map(val f: Expression) extends Expression {
-    def accept[T](visitor: Visitor[T]): T = {
-      visitor.visit(this)
+    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+      visitor.visit(this, arg)
     }
   }
 
   case class Identifier(val value: String, val isParam: Boolean) extends Expression {
-    def accept[T](visitor: Visitor[T]): T = {
-      visitor.visit(this)
+    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+      visitor.visit(this, arg)
     }
   }
 
   case class Const[U](val value: U) extends Expression {
-    def accept[T](visitor: Visitor[T]): T = {
-      visitor.visit(this)
+    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+      visitor.visit(this, arg)
     }
   }
 
   case class Undefined() extends Expression {
-    def accept[T](visitor: Visitor[T]): T = {
-      visitor.visit(this)
+    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+      visitor.visit(this, arg)
     }
   }
   object Undefined {

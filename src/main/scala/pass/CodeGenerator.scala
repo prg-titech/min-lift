@@ -2,8 +2,10 @@ package pass
 
 import ast._
 
-class CodeGenerator extends Visitor[String] {
-  override def visit(node: Lift): String = {
+class CodeGenerator extends Visitor[Unit, String] {
+  type ArgType = Unit
+
+  override def visit(node: Lift, arg: ArgType): String = {
     val Expression.Lambda(params, body) = node.body
 
     def generateParam(ty: Type, param: Expression.Identifier): String = {
@@ -16,12 +18,12 @@ class CodeGenerator extends Visitor[String] {
       |  global ${body.ty.toCL} result,
       |  ${node.variables.map(v => s"int ${v.name}").mkString(", ")}) {
       |     int gid = get_global_id(0);
-      |     ${body.accept(this)}
+      |     ${body.accept(this, ())}
       |  }
     """.stripMargin
   }
 
-  override def visit[U](node: Expression.Apply): String = {
+  override def visit(node: Expression.Apply, arg: ArgType): String = {
     node.callee match {
       case Expression.Identifier("mapSeq", false) => {
         val Expression.Lambda(args, body) = node.args(0)
@@ -34,31 +36,31 @@ class CodeGenerator extends Visitor[String] {
            |if (diff > 0) n = min(n, diff);
            |for (int i = $chunkSize * gid; i < $chunkSize * gid + n; i++) {
            |  ${inner.toCL} ${args(0).value} = ${collectionName}[i];
-           |  result[i] = ${node.args(0).accept(this)};
+           |  result[i] = ${node.args(0).accept(this, ())};
            |}
          """.stripMargin
       }
       case Expression.Identifier("*", false) => {
         s"""
-           |${node.args(0).accept(this)} * ${node.args(1).accept(this)}
+           |${node.args(0).accept(this, ())} * ${node.args(1).accept(this, ())}
          """.stripMargin
       }
     }
   }
 
-  override def visit(node: Expression.Lambda): String = {
-    node.body.accept(this)
+  override def visit(node: Expression.Lambda, arg: ArgType): String = {
+    node.body.accept(this, ())
   }
 
-  override def visit(node: Expression.Map) = ???
+  override def visit(node: Expression.Map, arg: ArgType) = ???
 
-  override def visit(node: Expression.Identifier): String = node.value
+  override def visit(node: Expression.Identifier, arg: ArgType): String = node.value
 
-  override def visit[U](node: Expression.Const[U]): String = node.value.toString
+  override def visit[U](node: Expression.Const[U], arg: ArgType): String = node.value.toString
 
-  override def visit(node: Expression.Undefined) = ???
+  override def visit(node: Expression.Undefined, arg: ArgType) = ???
 }
 
 object CodeGenerator {
-  def generate(node: Lift) = (new CodeGenerator).visit(node)
+  def generate(node: Lift) = (new CodeGenerator).visit(node, ())
 }
