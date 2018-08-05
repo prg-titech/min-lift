@@ -22,7 +22,7 @@ class Parser(val tokens: Vector[Token]) {
       _ <- consume(RParen);
       _ <- eof()
     ) yield {
-      new Lift(vars, types, body)
+      new Lift(vars, types, body.asInstanceOf[Expression.Lambda])
     }
   }
 

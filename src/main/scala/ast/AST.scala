@@ -2,7 +2,7 @@ package ast
 
 sealed abstract class Node
 
-case class Lift(val variables: Vector[Variable], val inputTypes: Vector[Type], val body: Expression) extends Node {
+case class Lift(val variables: Vector[Variable], val inputTypes: Vector[Type], val body: Expression.Lambda) extends Node {
   def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
     visitor.visit(this, arg)
   }
@@ -10,6 +10,10 @@ case class Lift(val variables: Vector[Variable], val inputTypes: Vector[Type], v
 
 sealed abstract class Type {
   def toCL: String
+
+  def ->:(ty: Type): Type = {
+    Type.Arrow(ty, this)
+  }
 }
 object Type {
   /*
@@ -41,7 +45,7 @@ object Type {
   }
 
   case class Arrow(val argType: Type, val resultType: Type) extends Type {
-    override def toString: String = s"$argType => $resultType"
+    override def toString: String = s"($argType => $resultType)"
     override def toCL: String = resultType.toCL // ?
   }
 
@@ -49,6 +53,9 @@ object Type {
     override def toString: String = s"$name[${innerTypes.mkString(", ")}]"
     override def toCL: String = name // ?
   }
+
+  def Float() = TypeCon("Float", Vector())
+  def Array(it: Type) = TypeCon("Array", Vector(it))
 }
 
 case class Variable(val name: String) {
@@ -56,7 +63,6 @@ case class Variable(val name: String) {
 }
 
 sealed abstract class Expression extends Node {
-  val ty = TypeVar
   var addressSpace: Option[pass.MemoryAllocator.AddressSpace] = None
 
   def accept[A, R](visitor: Visitor[A, R], arg: A): R
@@ -74,11 +80,13 @@ object Expression {
     }
   }
 
+  /*
   case class Map(val f: Expression) extends Expression {
     def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
       visitor.visit(this, arg)
     }
   }
+  */
 
   case class Identifier(val value: String, val isParam: Boolean) extends Expression {
     def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
@@ -92,16 +100,16 @@ object Expression {
     }
   }
 
-  case class Undefined() extends Expression {
-    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
-      visitor.visit(this, arg)
-    }
-  }
-  object Undefined {
-    def withType(ty: Type): Undefined = {
-      val undef = Undefined()
-      undef.ty = ty
-      undef
-    }
-  }
+//  case class Undefined() extends Expression {
+//    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+//      visitor.visit(this, arg)
+//    }
+//  }
+//  object Undefined {
+//    def withType(ty: Type): Undefined = {
+//      val undef = Undefined()
+//      undef.ty = ty
+//      undef
+//    }
+//  }
 }
