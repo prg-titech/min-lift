@@ -4,7 +4,7 @@ import scala.collection._
 import ast._
 
 // check and infer types by abstract interpretation
-class TypeChecker extends Visitor[Either[String, (Expression, Type)]] {
+class TypeCheckerOld extends Visitor[Either[String, (Expression, Type)]] {
   type Value = (Expression, Type)
   type TypeCheckerResult = Either[String, Value]
   type LocalEnv = mutable.Map[String, Value]
@@ -222,6 +222,6 @@ class TypeChecker extends Visitor[Either[String, (Expression, Type)]] {
   }
 }
 
-object TypeChecker {
+object TypeCheckerOld {
   def check(lift: Lift) = (new TypeChecker).visit(lift)
 }

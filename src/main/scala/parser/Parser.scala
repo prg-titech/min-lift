@@ -41,7 +41,8 @@ class Parser(val tokens: Vector[Token]) {
         size <- parseVariable();
         _ <- consume(RParen)
       ) yield {
-        Type.Array(ty, size)
+        // Type.Array(ty, size)
+        Type.Array(ty)
       }
     }
     else {
@@ -92,7 +93,7 @@ class Parser(val tokens: Vector[Token]) {
             args <- _while(true, tok => tok != RParen, _ => parseExpression());
             _ <- consume(RParen)
           ) yield {
-            Expression.Apply(callee, args)
+            Expression.Apply(callee, args.toList)
           }
         }
       }

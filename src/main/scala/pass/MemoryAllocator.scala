@@ -59,7 +59,7 @@ object MemoryAllocator  {
     }
   }
 
-  def inferAddressSpaceApply(lambda: Expression.Lambda, args: Vector[Expression], writeTo: Option[AddressSpace]): Unit = {
+  def inferAddressSpaceApply(lambda: Expression.Lambda, args: List[Expression], writeTo: Option[AddressSpace]): Unit = {
     lambda.args.zip(args).foreach { case (p, a) => p.addressSpace = a.addressSpace }
     inferAddressSpaceExpr(lambda.body, writeTo)
   }

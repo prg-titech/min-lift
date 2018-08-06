@@ -23,9 +23,13 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
 
     val a = createTypeVar()
     val b = createTypeVar()
+    val c = createTypeVar()
+
     var env = _env.append(Map(
-      ("mapSeq" -> TypeScheme(List(a), (a ->: b) ->: Array(a) ->: Array(b))),
-      ("*" -> TypeScheme(List(), Float ->: Float ->: Float))))
+      ("mapSeq" -> TypeScheme(List(a, b), (a ->: b) ->: Array(a) ->: Array(b))),
+      ("o" -> TypeScheme(List(a, b, c), (b ->: c) ->: (a ->: b) ->: (a ->: c))),
+      ("*" -> TypeScheme(List(), Float ->: Float ->: Float)),
+      ("+" -> TypeScheme(List(), Float ->: Float ->: Float))))
       .append(lambdaEnv.toMap)
 
     body.accept(this, env)
@@ -45,22 +49,119 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
     }
   }
 
-  override def visit(arrow: Arrow, env: ArgumentType): ResultType = {
+  override def visit(apply: Apply, env: ArgumentType): ResultType = {
+    apply.callee.accept(this, env).flatMap { case (ty1, subst1) =>
+      // convert List[Either[E, X]] to Either[E, List[X]]
+      val args = apply.args
+          .map(_.accept(this, env))
+          .foldLeft(Right(List()): Either[String, List[(Type, Subst)]])((args, arg) =>
+            arg match {
+              case Right(t) => args.map(t :: _)
+              case Left(err) => Left(err)
+            }
+          )
 
+      args.map(args => {
+        val resultType = createTypeVar()
+        val argSubst = args.foldRight(EmptySubst(): Subst)((arg, subst) =>
+          subst.concat(arg._2)
+        )
+        val calleeType = args.foldRight(resultType: Type)((arg, ty) =>
+          arg._1 ->: ty
+        )
+        (resultType, subst1.concat(argSubst).append(ty1, calleeType))
+      })
+    }
   }
 
   override def visit(id: Identifier, env: ArgumentType): ResultType = {
     env.lookup(id.value).toRight(s"undefined identifier ${id.value}")
         .map(ty => {
-          (ty.toType(this), createTypeVar(), EmptySubst())
+          (ty.toType(this), EmptySubst())
         })
+  }
+
+  override def visit[C](const: Const[C], env: ArgumentType): ResultType = const match {
+    case Const(value) => {
+      val ty = value match {
+        case v:Float => Float
+        case v:Double => Double
+        case v:Int => Int
+      }
+      Right(ty, EmptySubst())
+    }
   }
 }
 
-object TypeInferer {
-  def check(lift: Lift): [String, Unit] = {
-    new TypeInferer().visit(lift, Map[String, TypeScheme]())
-    ()
+object TypeChecker {
+  def unify(subst: Subst): Either[String, Subst] = {
+    subst match {
+      case SubstCons(ty1, ty2@TypeVar(_), next) => {
+        if (ty1 == ty2) {
+          unify(next)
+        }
+        else if (ty1.hasTypeVar(ty2)) {
+          Left(s"$ty1 and $ty2: circular constraints")
+        }
+        else {
+          unify(next.replaceBy(ty2, ty1)).map(_.append(ty2, ty1))
+        }
+      }
+      case SubstCons(ty1@TypeVar(_), ty2, next) => {
+        if (ty1 == ty2) {
+          unify(next)
+        }
+        else if (ty2.hasTypeVar(ty1)) {
+          Left(s"$ty1 and $ty2: circular constraints")
+        }
+        else {
+          unify(next.replaceBy(ty1, ty2)).map(_.append(ty1, ty2))
+        }
+      }
+      case SubstCons(ty1@Scalar(_), ty2@Scalar(_), next) => {
+        if (ty1 == ty2) {
+          unify(next)
+        }
+        else {
+          Left(s"$ty1 and $ty2: unsolvable constraints")
+        }
+      }
+      case SubstCons(Arrow(tyS1, tyS2), Arrow(tyT1, tyT2), next) => {
+        unify(next.append(tyS1, tyT1).append(tyS2, tyT2))
+      }
+      case SubstCons(ty1@TypeCon(name1, it1), ty2@TypeCon(name2, it2), next) => {
+        if (name1 == name2) {
+          val itSubst = it1.zip(it2).foldRight(next)((ty, subst) => {
+            subst.append(ty._1, ty._2)
+          })
+          unify(itSubst)
+        }
+        else {
+          Left(s"$ty1 and $ty2: unsolvable constraints")
+        }
+      }
+      case SubstCons(ty1, ty2, next) => {
+        Left(s"$ty1 and $ty2: unsolvable constraints")
+      }
+      case EmptySubst() => {
+        Right(EmptySubst())
+      }
+    }
+  }
+
+  def check(lift: Lift) = {
+    val res = new TypeInferer().visit(lift, EmptyEnv())
+    res.map { case (ty, subst) => {
+      println(ty, subst)
+      val unifyed = unify(subst)
+      println(unifyed)
+      unifyed.map((unifyed) => {
+        val resultType = unifyed.replace(ty)
+        println(resultType)
+      })
+
+    }}.left.map(println(_))
+    res
   }
 }
 
@@ -101,10 +202,17 @@ sealed trait Subst {
 
   def replace(ty: Type): Type
   def replace(env: Env): Env
+  def replaceBy(from: TypeVar, to: Type): Subst
+
+  def append(t1: Type, t2: Type) = SubstCons(t1, t2, this)
+  def concat(subst: Subst): Subst = subst match {
+    case SubstCons(typeVar, ty, next) => append(typeVar, ty).concat(next)
+    case EmptySubst() => this
+  }
 }
 
-// TypeVar -> Type
-case class SubstCons(val typeVar: TypeVar, val ty: Type, val next: Subst) extends Subst {
+// Type -> Type
+case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst {
   def replace(ty: Type): Type = ty match {
     case tv@TypeVar(name) => {
       val u = lookup(tv)
@@ -116,6 +224,7 @@ case class SubstCons(val typeVar: TypeVar, val ty: Type, val next: Subst) extend
     case TypeCon(name, innerTypes) => {
       TypeCon(name, innerTypes.map(replace))
     }
+    case Scalar(_) => ty
   }
 
   def replace(env: Env): Env = env match {
@@ -129,11 +238,15 @@ case class SubstCons(val typeVar: TypeVar, val ty: Type, val next: Subst) extend
     case EmptyEnv() => EmptyEnv()
   }
 
+  def replaceBy(from: TypeVar, to: Type): Subst = {
+    SubstCons(t1, t2.replaceBy(from, to), next.replaceBy(from, to))
+  }
+
   def lookup(x: TypeVar): Type = {
-    if (x == typeVar) ty
+    if (x == t1) t2
     else next.lookup(x)
   }
-  override def toString: String = s"$typeVar = $ty, " + next.toString
+  override def toString: String = s"$t1 = $t2, " + next.toString
 }
 
 case class EmptySubst() extends Subst {
@@ -142,4 +255,5 @@ case class EmptySubst() extends Subst {
 
   def replace(ty: Type): Type = ty
   def replace(env: Env): Env = env
+  def replaceBy(from: TypeVar, to: Type): Subst = this
 }

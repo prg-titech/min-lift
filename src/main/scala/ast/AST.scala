@@ -14,47 +14,59 @@ sealed abstract class Type {
   def ->:(ty: Type): Type = {
     Type.Arrow(ty, this)
   }
+
+  def hasTypeVar(typeVar: Type.TypeVar): Boolean;
+  def replaceBy(from: Type.TypeVar, to: Type): Type
 }
 object Type {
-  /*
-  case class Array(val innerType: Type, val length: Variable) extends Type {
-    override def toString: String = s"${innerType}[${length}]"
-    override def toCL: String = s"${innerType.toCL}*"
-  }
-  case class Function(val argTypes: Vector[Type], val resultType: Type) extends Type {
-    override def toString: String = s"(${argTypes.mkString(", ")}) => ${resultType}"
-    override def toCL: String = resultType.toCL // ?
-  }
-  abstract class Scalar extends Type
-  case object Float extends Scalar {
-    override def toCL: String = "float"
-  }
-  case object Double extends Scalar {
-    override def toCL: String = "double"
-  }
-  case object Int extends Scalar {
-    override def toCL: String = "int"
-  }
-  */
-
-  // TODO: Add vector type and tuple type
-
   case class TypeVar(val name: String) extends Type {
     override def toString: String = s"<${name}>"
     override def toCL: String = ???
+
+    def hasTypeVar(typeVar: Type.TypeVar): Boolean = typeVar == this
+    def replaceBy(from: Type.TypeVar, to: Type): Type = {
+      if (this == from) to
+      else this
+    }
   }
 
   case class Arrow(val argType: Type, val resultType: Type) extends Type {
     override def toString: String = s"($argType => $resultType)"
     override def toCL: String = resultType.toCL // ?
+
+    def hasTypeVar(typeVar: Type.TypeVar): Boolean = {
+      argType.hasTypeVar(typeVar) || resultType.hasTypeVar(typeVar)
+    }
+    def replaceBy(from: Type.TypeVar, to: Type): Type = {
+      Arrow(argType.replaceBy(from, to), resultType.replaceBy(from, to))
+    }
   }
 
   case class TypeCon(val name: String, innerTypes: Vector[Type]) extends Type {
     override def toString: String = s"$name[${innerTypes.mkString(", ")}]"
-    override def toCL: String = name // ?
+    override def toCL: String = s"$name???"
+
+    def hasTypeVar(typeVar: Type.TypeVar): Boolean = {
+      innerTypes.exists(_.hasTypeVar(typeVar))
+    }
+    def replaceBy(from: Type.TypeVar, to: Type): Type = {
+      TypeCon(name, innerTypes.map(_.replaceBy(from, to)))
+    }
   }
 
-  def Float() = TypeCon("Float", Vector())
+  abstract class Scalar(val name: String) extends Type {
+    override def toCL: String = name
+
+    def hasTypeVar(typeVar: TypeVar): Boolean = false
+    def replaceBy(from: Type.TypeVar, to: Type): Type = this
+  }
+  object Scalar {
+    def unapply(arg: Scalar): Option[String] = Some(arg.name)
+  }
+  case object Float extends Scalar("float")
+  case object Double extends Scalar("double")
+  case object Int extends Scalar("int")
+
   def Array(it: Type) = TypeCon("Array", Vector(it))
 }
 
@@ -68,7 +80,7 @@ sealed abstract class Expression extends Node {
   def accept[A, R](visitor: Visitor[A, R], arg: A): R
 }
 object Expression {
-  case class Apply(val callee: Expression, val args: Vector[Expression]) extends Expression {
+  case class Apply(val callee: Expression, val args: List[Expression]) extends Expression {
     def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
       visitor.visit(this, arg)
     }

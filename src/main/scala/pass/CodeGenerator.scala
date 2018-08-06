@@ -15,7 +15,7 @@ class CodeGenerator extends Visitor[Unit, String] {
     s"""
       |kernel void KERNEL(
       |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
-      |  global ${body.ty.toCL} result,
+      |  global {body.ty.toCL} result,
       |  ${node.variables.map(v => s"int ${v.name}").mkString(", ")}) {
       |     int gid = get_global_id(0);
       |     ${body.accept(this, ())}
@@ -28,14 +28,14 @@ class CodeGenerator extends Visitor[Unit, String] {
       case Expression.Identifier("mapSeq", false) => {
         val Expression.Lambda(args, body) = node.args(0)
         val Expression.Identifier(collectionName, _) = node.args(1)
-        val Type.Array(inner, length) = node.args(1).ty
+        // val Type.Array(inner, length) = node.args(1).ty
         val chunkSize = 5
         s"""
            |int n = $chunkSize;
            |int diff = $chunkSize * gid - N + 1;
            |if (diff > 0) n = min(n, diff);
            |for (int i = $chunkSize * gid; i < $chunkSize * gid + n; i++) {
-           |  ${inner.toCL} ${args(0).value} = ${collectionName}[i];
+           |  {inner.toCL} ${args(0).value} = ${collectionName}[i];
            |  result[i] = ${node.args(0).accept(this, ())};
            |}
          """.stripMargin
@@ -52,13 +52,9 @@ class CodeGenerator extends Visitor[Unit, String] {
     node.body.accept(this, ())
   }
 
-  override def visit(node: Expression.Map, arg: ArgType) = ???
-
   override def visit(node: Expression.Identifier, arg: ArgType): String = node.value
 
   override def visit[U](node: Expression.Const[U], arg: ArgType): String = node.value.toString
-
-  override def visit(node: Expression.Undefined, arg: ArgType) = ???
 }
 
 object CodeGenerator {
