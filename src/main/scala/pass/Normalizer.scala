@@ -10,21 +10,19 @@ class Normalizer extends Visitor[Unit, Node] {
     Lift(node.variables, node.inputTypes, node.body.accept(this, ()).asInstanceOf[Expression.Lambda])
   }
 
+  // (((f x) y) z) -> ((f x) y z) -> (f x y z)
   override def visit(node: Expression.Apply, a: Unit): NormalizerResult = {
-    /*node.callee.ty match {
-      case Type.Function(argTypes, resultType) => {
-        if (argTypes.length == 0) {
-          node.callee
-        }
-        else {
-          val Expression.Apply(callee, args) = node.callee
-          val newApply = Expression.Apply(callee, args ++ node.args)
-          newApply.ty = Type.Function(argTypes.drop(node.args.length), resultType)
-          newApply
-        }
+    node.callee match {
+      case Expression.Apply(ccallee, cargs) => {
+        val newApply = Expression.Apply(ccallee, cargs ++ node.args)
+        newApply.accept(this, ())
       }
-    }*/
-    node
+      case _ => {
+        Expression.Apply(
+          node.callee.accept(this, ()).asInstanceOf[Expression],
+          node.args.map(_.accept(this, ()).asInstanceOf[Expression]))
+      }
+    }
   }
 
   override def visit(node: Expression.Lambda, a: Unit): NormalizerResult = {

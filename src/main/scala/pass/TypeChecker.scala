@@ -15,7 +15,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
   }
 
   override def visit(lift: Lift, _env: ArgumentType): ResultType = {
-    val Lambda(args, body) = lift.body
+    val Lambda(args, _) = lift.body
 
     val lambdaEnv = args.zip(lift.inputTypes).map { case (id, ty) =>
         id.value -> TypeScheme(List(), ty)
@@ -32,7 +32,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
       ("+" -> TypeScheme(List(), Float ->: Float ->: Float))))
       .append(lambdaEnv.toMap)
 
-    body.accept(this, env)
+    Apply(lift.body, args).accept(this, env)
   }
 
   override def visit(lambda: Lambda, env: ArgumentType): ResultType = {
@@ -45,6 +45,8 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
       val lambdaType = lambdaEnv.foldRight(ty)((argTy, ty) => {
         argTy._2.toType(this) ->: ty
       })
+      lambda.args.zip(lambdaEnv).foreach { case (arg, e) => arg.ty = Some(e._2.toType(this)) }
+      lambda.ty = Some(lambdaType)
       (lambdaType, subst)
     }
   }
@@ -69,6 +71,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
         val calleeType = args.foldRight(resultType: Type)((arg, ty) =>
           arg._1 ->: ty
         )
+        apply.ty = Some(resultType)
         (resultType, subst1.concat(argSubst).append(ty1, calleeType))
       })
     }
@@ -77,7 +80,9 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
   override def visit(id: Identifier, env: ArgumentType): ResultType = {
     env.lookup(id.value).toRight(s"undefined identifier ${id.value}")
         .map(ty => {
-          (ty.toType(this), EmptySubst())
+          val idType  = ty.toType(this)
+          id.ty = Some(idType)
+          (idType, EmptySubst())
         })
   }
 
@@ -88,8 +93,36 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
         case v:Double => Double
         case v:Int => Int
       }
+      const.ty = Some(ty)
       Right(ty, EmptySubst())
     }
+  }
+}
+
+class TypeReplacer(val subst: Subst) extends Visitor[Unit, Unit] {
+  override def visit(node: Lift, arg: Unit): Unit = {
+    node.body.accept(this, ())
+  }
+
+  override def visit(node: Apply, arg: Unit): Unit = {
+    node.callee.accept(this, ())
+    node.args.foreach(_.accept(this, ()))
+
+    node.ty = node.ty.map(subst.replace(_))
+  }
+
+  override def visit(node: Lambda, arg: Unit): Unit = {
+    node.args.foreach(_.accept(this, ()))
+    node.body.accept(this, ())
+
+    node.ty = node.ty.map(subst.replace(_))
+  }
+
+  override def visit(node: Identifier, arg: Unit): Unit = {
+    node.ty = node.ty.map(subst.replace(_))
+  }
+
+  override def visit[C](node: Const[C], arg: Unit): Unit = {
   }
 }
 
@@ -151,17 +184,14 @@ object TypeChecker {
 
   def check(lift: Lift) = {
     val res = new TypeInferer().visit(lift, EmptyEnv())
-    res.map { case (ty, subst) => {
-      println(ty, subst)
+    println(AstPrinter.print(lift))
+    res.flatMap { case (ty, subst) => {
       val unifyed = unify(subst)
-      println(unifyed)
       unifyed.map((unifyed) => {
-        val resultType = unifyed.replace(ty)
-        println(resultType)
+        new TypeReplacer(unifyed).visit(lift, ())
+        lift
       })
-
-    }}.left.map(println(_))
-    res
+    }}
   }
 }
 

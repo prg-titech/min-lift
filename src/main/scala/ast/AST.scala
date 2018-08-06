@@ -15,7 +15,7 @@ sealed abstract class Type {
     Type.Arrow(ty, this)
   }
 
-  def hasTypeVar(typeVar: Type.TypeVar): Boolean;
+  def hasTypeVar(typeVar: Type.TypeVar): Boolean
   def replaceBy(from: Type.TypeVar, to: Type): Type
 }
 object Type {
@@ -75,6 +75,8 @@ case class Variable(val name: String) {
 }
 
 sealed abstract class Expression extends Node {
+  // FIXME: don't use var
+  var ty: Option[Type] = None
   var addressSpace: Option[pass.MemoryAllocator.AddressSpace] = None
 
   def accept[A, R](visitor: Visitor[A, R], arg: A): R
@@ -86,19 +88,11 @@ object Expression {
     }
   }
 
-  case class Lambda(val args: Vector[Identifier], val body: Expression) extends Expression {
+  case class Lambda(val args: List[Identifier], val body: Expression) extends Expression {
     def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
       visitor.visit(this, arg)
     }
   }
-
-  /*
-  case class Map(val f: Expression) extends Expression {
-    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
-      visitor.visit(this, arg)
-    }
-  }
-  */
 
   case class Identifier(val value: String, val isParam: Boolean) extends Expression {
     def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
@@ -111,17 +105,4 @@ object Expression {
       visitor.visit(this, arg)
     }
   }
-
-//  case class Undefined() extends Expression {
-//    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
-//      visitor.visit(this, arg)
-//    }
-//  }
-//  object Undefined {
-//    def withType(ty: Type): Undefined = {
-//      val undef = Undefined()
-//      undef.ty = ty
-//      undef
-//    }
-//  }
 }

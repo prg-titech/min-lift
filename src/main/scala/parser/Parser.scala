@@ -84,7 +84,7 @@ class Parser(val tokens: Vector[Token]) {
             body <- parseExpression();
             _ <- consume(RParen)
           ) yield {
-            Expression.Lambda(args, body)
+            Expression.Lambda(args.toList, body)
           }
         }
         case _ => {
