@@ -16,7 +16,7 @@ class CodeGenerator extends Visitor[Unit, String] {
       |kernel void KERNEL(
       |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
       |  global {body.ty.toCL} result,
-      |  ${node.variables.map(v => s"int ${v.name}").mkString(", ")}) {
+      |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
       |     int gid = get_global_id(0);
       |     ${body.accept(this, ())}
       |  }

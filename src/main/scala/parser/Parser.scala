@@ -26,9 +26,9 @@ class Parser(val tokens: Vector[Token]) {
     }
   }
 
-  def parseVariable(): Either[ErrType, Variable] = {
+  def parseVariable(): Either[ErrType, Type.Size] = {
     consume[Identifier].map(tok => {
-      Variable(tok.asInstanceOf[Identifier].value)
+      Type.SizeVariable(tok.asInstanceOf[Identifier].value)
     })
   }
 
@@ -41,8 +41,7 @@ class Parser(val tokens: Vector[Token]) {
         size <- parseVariable();
         _ <- consume(RParen)
       ) yield {
-        // Type.Array(ty, size)
-        Type.Array(ty)
+        Type.Array(ty, size)
       }
     }
     else {

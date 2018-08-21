@@ -26,7 +26,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
     val c = createTypeVar()
 
     var env = _env.append(Map(
-      ("mapSeq" -> TypeScheme(List(a, b), (a ->: b) ->: Array(a) ->: Array(b))),
+      ("mapSeq" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("o" -> TypeScheme(List(a, b, c), (b ->: c) ->: (a ->: b) ->: (a ->: c))),
       ("*" -> TypeScheme(List(), Float ->: Float ->: Float)),
       ("+" -> TypeScheme(List(), Float ->: Float ->: Float))))
@@ -173,6 +173,12 @@ object TypeChecker {
           Left(s"$ty1 and $ty2: unsolvable constraints")
         }
       }
+      case SubstCons(ty1@Array(it1, size1), ty2@Array(it2, size2), next) => {
+        unify(next.append(it1, it2).append(size1, size2))
+      }
+      case SubstCons(ty1@SizeDivision(dd1, dr1), ty2@SizeDivision(dd2, dr2), next) => {
+        unify(next.append(dd1, dd2).append(dr1, dr2))
+      }
       case SubstCons(ty1, ty2, next) => {
         Left(s"$ty1 and $ty2: unsolvable constraints")
       }
@@ -255,6 +261,13 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
       TypeCon(name, innerTypes.map(replace))
     }
     case Scalar(_) => ty
+    case Array(it, size) => {
+      Array(replace(it), replace(size))
+    }
+    case SizeVariable(_) => ty
+    case SizeDivision(dd, dr) => {
+      SizeDivision(replace(dd), replace(dr))
+    }
   }
 
   def replace(env: Env): Env = env match {

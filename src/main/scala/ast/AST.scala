@@ -2,7 +2,7 @@ package ast
 
 sealed abstract class Node
 
-case class Lift(val variables: Vector[Variable], val inputTypes: Vector[Type], val body: Expression.Lambda) extends Node {
+case class Lift(val variables: Vector[Type.Size], val inputTypes: Vector[Type], val body: Expression.Lambda) extends Node {
   def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
     visitor.visit(this, arg)
   }
@@ -42,7 +42,7 @@ object Type {
     }
   }
 
-  case class TypeCon(val name: String, innerTypes: Vector[Type]) extends Type {
+  case class TypeCon(val name: String, val innerTypes: Vector[Type]) extends Type {
     override def toString: String = s"$name[${innerTypes.mkString(", ")}]"
     override def toCL: String = s"$name???"
 
@@ -67,11 +67,38 @@ object Type {
   case object Double extends Scalar("double")
   case object Int extends Scalar("int")
 
-  def Array(it: Type) = TypeCon("Array", Vector(it))
-}
+  case class Array(val innerType: Type, val size: Type) extends Type {
+    override def toCL: String = s"$innerType*"
 
-case class Variable(val name: String) {
-  override def toString: String = name
+    override def hasTypeVar(typeVar: TypeVar): Boolean = {
+      innerType.hasTypeVar(typeVar) || size.hasTypeVar(typeVar)
+    }
+    override def replaceBy(from: TypeVar, to: Type): Type = {
+      Array(innerType.replaceBy(from, to), size.replaceBy(from, to))
+    }
+  }
+
+  abstract class Size extends Type {
+    override def toString: String
+  }
+  case class SizeVariable(val name: String) extends Size {
+    override def toString: String = name
+    override def toCL: String = name
+
+    def hasTypeVar(typeVar: TypeVar): Boolean = false
+    def replaceBy(from: TypeVar, to: Type): Type = this
+  }
+  case class SizeDivision(val dividend: Type, val divisor: Type) extends Size {
+    override def toString: String = s"$dividend/$divisor"
+    override def toCL: String = ???
+
+    def hasTypeVar(typeVar: TypeVar): Boolean = {
+      dividend.hasTypeVar(typeVar) || divisor.hasTypeVar(typeVar)
+    }
+    def replaceBy(from: TypeVar, to: Type): Type = {
+      SizeDivision(dividend.replaceBy(from, to), divisor.replaceBy(from, to))
+    }
+  }
 }
 
 sealed abstract class Expression extends Node {
