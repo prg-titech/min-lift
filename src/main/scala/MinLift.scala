@@ -31,11 +31,11 @@ object MinLift {
       println(AstPrinter.print(norm))
       println(AstPrinter.print(typedNorm))
 
-//      println(code)
-//      val dest = new PrintWriter(destPath)
-//      dest.write(code)
-//      dest.close()
-//      println("output code\n")
+      println(code)
+      val dest = new PrintWriter(destPath)
+      dest.write(code)
+      dest.close()
+      println("output code\n")
 //      println((new CodeGenerator).visit(ast))
     }
 
