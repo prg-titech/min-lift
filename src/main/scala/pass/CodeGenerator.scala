@@ -55,6 +55,8 @@ class CodeGenerator extends Visitor[Unit, String] {
   override def visit(node: Expression.Identifier, arg: ArgType): String = node.value
 
   override def visit[U](node: Expression.Const[U], arg: ArgType): String = node.value.toString
+
+  override def visit(node: Expression.Size, arg: ArgType): String = node.value.toString
 }
 
 object CodeGenerator {

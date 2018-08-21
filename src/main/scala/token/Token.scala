@@ -51,12 +51,18 @@ object Token {
             Some(IntLiteral(value.toInt))
           }
         }
+        case '#' => {
+          index += 1
+          var value = readWhile(c => c.isDigit)
+          index -= 1
+          Some(SizeConstLiteral(value.toInt))
+        }
         case ' ' | '\r' | '\n' | '\t' => None
         case ';' => {
           readWhile(c => c != '\n')
           None
         }
-        case _ => return Left(s"unknown token ${source(index)}")
+        case _ => return Left(s"unknown character ${source(index)}")
       }
 
       token.map(tok => tokens :+= tok)
@@ -76,4 +82,5 @@ case class Identifier(val value: String) extends Token
 case class FloatLiteral(val value: Float) extends Token
 case class DoubleLiteral(val value: Double) extends Token
 case class IntLiteral(val value: Int) extends Token
+case class SizeConstLiteral(val value: Int) extends Token
 

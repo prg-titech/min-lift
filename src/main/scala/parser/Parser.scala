@@ -64,6 +64,7 @@ class Parser(val tokens: Vector[Token]) {
           case FloatLiteral(value) => Right(Expression.Const[Float](value))
           case DoubleLiteral(value) => Right(Expression.Const[Double](value))
           case IntLiteral(value) => Right(Expression.Const[Int](value))
+          case SizeConstLiteral(value) => Right(Expression.Size(value))
           case _ => Left(s"unknown token ${cur.getClass.getName}")
         }
         pos += 1

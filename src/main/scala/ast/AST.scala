@@ -80,6 +80,7 @@ object Type {
 
   abstract class Size extends Type {
     override def toString: String
+    override def toCL: String
   }
   case class SizeVariable(val name: String) extends Size {
     override def toString: String = name
@@ -88,16 +89,32 @@ object Type {
     def hasTypeVar(typeVar: TypeVar): Boolean = false
     def replaceBy(from: TypeVar, to: Type): Type = this
   }
-  case class SizeDivision(val dividend: Type, val divisor: Type) extends Size {
-    override def toString: String = s"$dividend/$divisor"
+  case class SizeConst(val value: Int) extends Size {
+    override def toString: String = s"#${value.toString}"
+    override def toCL: String = value.toString
+
+    def hasTypeVar(typeVar: TypeVar): Boolean = false
+    def replaceBy(from: TypeVar, to: Type): Type = this
+  }
+  abstract class SizeBinaryOperator(val a: Type, val b: Type) extends Size {
     override def toCL: String = ???
 
     def hasTypeVar(typeVar: TypeVar): Boolean = {
-      dividend.hasTypeVar(typeVar) || divisor.hasTypeVar(typeVar)
+      a.hasTypeVar(typeVar) || b.hasTypeVar(typeVar)
     }
+
     def replaceBy(from: TypeVar, to: Type): Type = {
-      SizeDivision(dividend.replaceBy(from, to), divisor.replaceBy(from, to))
+      SizeDivision(a.replaceBy(from, to), b.replaceBy(from, to))
     }
+  }
+  object SizeBinaryOperator {
+    def unapply(size: SizeBinaryOperator): Option[(Type, Type)] = Some((size.a, size.b))
+  }
+  case class SizeDivision(dividend: Type, divisor: Type) extends SizeBinaryOperator(dividend, divisor) {
+    override def toString: String = s"$dividend/$divisor"
+  }
+  case class SizeMultiply(x: Type, y: Type) extends SizeBinaryOperator(x, y) {
+    override def toString: String = s"$a*$b"
   }
 }
 
@@ -128,6 +145,12 @@ object Expression {
   }
 
   case class Const[U](val value: U) extends Expression {
+    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+      visitor.visit(this, arg)
+    }
+  }
+
+  case class Size(val value: Int) extends Expression {
     def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
       visitor.visit(this, arg)
     }

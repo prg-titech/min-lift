@@ -31,6 +31,10 @@ class AstPrinter extends Visitor[Unit, String] {
   override def visit[C](node: Expression.Const[C], a: Unit): String = {
     s"${node.value}:${node.ty}@${node.addressSpace}"
   }
+
+  override def visit(node: Expression.Size, a: Unit): String = {
+    s"${node.value}:${node.ty}@${node.addressSpace}"
+  }
 }
 
 object AstPrinter {

@@ -27,6 +27,8 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
 
     var env = _env.append(Map(
       ("mapSeq" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
+      ("split" -> TypeScheme(List(a, b, c), a ->: Array(b, c) ->: Array(Array(b, a), SizeDivision(c, a)))),
+      ("join" -> TypeScheme(List(a, b, c), Array(Array(a, b), c) ->: Array(a, SizeMultiply(b, c)))),
       ("o" -> TypeScheme(List(a, b, c), (b ->: c) ->: (a ->: b) ->: (a ->: c))),
       ("*" -> TypeScheme(List(), Float ->: Float ->: Float)),
       ("+" -> TypeScheme(List(), Float ->: Float ->: Float))))
@@ -97,6 +99,10 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
       Right(ty, EmptySubst())
     }
   }
+
+  override def visit(node: Expression.Size, env: ArgumentType): ResultType = {
+    Right(Type.SizeConst(node.value), EmptySubst())
+  }
 }
 
 class TypeReplacer(val subst: Subst) extends Visitor[Unit, Unit] {
@@ -123,6 +129,9 @@ class TypeReplacer(val subst: Subst) extends Visitor[Unit, Unit] {
   }
 
   override def visit[C](node: Const[C], arg: Unit): Unit = {
+  }
+
+  override def visit(node: Expression.Size, arg: Unit): Unit = {
   }
 }
 
@@ -176,8 +185,8 @@ object TypeChecker {
       case SubstCons(ty1@Array(it1, size1), ty2@Array(it2, size2), next) => {
         unify(next.append(it1, it2).append(size1, size2))
       }
-      case SubstCons(ty1@SizeDivision(dd1, dr1), ty2@SizeDivision(dd2, dr2), next) => {
-        unify(next.append(dd1, dd2).append(dr1, dr2))
+      case SubstCons(ty1@SizeBinaryOperator(a1, b1), ty2@SizeBinaryOperator(a2, b2), next) => {
+        unify(next.append(a1, b1).append(a2, b2))
       }
       case SubstCons(ty1, ty2, next) => {
         Left(s"$ty1 and $ty2: unsolvable constraints")
@@ -265,9 +274,9 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
       Array(replace(it), replace(size))
     }
     case SizeVariable(_) => ty
-    case SizeDivision(dd, dr) => {
-      SizeDivision(replace(dd), replace(dr))
-    }
+    case SizeDivision(dd, dr) => SizeDivision(replace(dd), replace(dr))
+    case SizeMultiply(x, y)   => SizeMultiply(replace(x), replace(y))
+    case SizeConst(_) => ty
   }
 
   def replace(env: Env): Env = env match {
