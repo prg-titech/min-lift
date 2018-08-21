@@ -68,7 +68,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
         val argSubst = args.foldRight(EmptySubst(): Subst)((arg, subst) =>
           subst.concat(arg._2)
         )
-        val calleeType = args.foldRight(resultType: Type)((arg, ty) =>
+        val calleeType = args.reverse.foldRight(resultType: Type)((arg, ty) =>
           arg._1 ->: ty
         )
         apply.ty = Some(resultType)

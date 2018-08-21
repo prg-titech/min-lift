@@ -17,23 +17,24 @@ object MinLift {
     val res = for (
        tokens <- Token.tokenize(source);
        ast <- Parser.parse(tokens);
-       typedAst <- TypeChecker.check(ast);
+       // typedAst <- TypeChecker.check(ast);
+       typedAst <- Right(ast);
        norm <- Right(Normalizer.normalize(typedAst));
-       _ <- Right(println(AstPrinter.print(norm)))
-       // typedNorm <- TypeChecker.check(norm)
-       /*_ <- MemoryAllocator.inferAddressSpace(norm);
-       code <- Right(CodeGenerator.generate(norm))*/
+       _ <- Right(println(AstPrinter.print(norm)));
+       typedNorm <- TypeChecker.check(norm);
+       _ <- MemoryAllocator.inferAddressSpace(typedNorm);
+       code <- Right(CodeGenerator.generate(typedNorm))
     ) yield {
       println(tokens)
       println("success checking type and allocating memory!")
       println(AstPrinter.print(typedAst))
       println(AstPrinter.print(norm))
-      /*
-      println(code)
-      val dest = new PrintWriter(destPath)
-      dest.write(code)
-      dest.close()
-      */
+      println(AstPrinter.print(typedNorm))
+
+//      println(code)
+//      val dest = new PrintWriter(destPath)
+//      dest.write(code)
+//      dest.close()
 //      println("output code\n")
 //      println((new CodeGenerator).visit(ast))
     }
