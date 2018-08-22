@@ -40,6 +40,11 @@ object Type {
     def replaceBy(from: Type.TypeVar, to: Type): Type = {
       Arrow(argType.replaceBy(from, to), resultType.replaceBy(from, to))
     }
+
+    def lastResultType: Type = resultType match {
+      case ty@Arrow(_, _) => ty.lastResultType
+      case _ => resultType
+    }
   }
 
   case class TypeCon(val name: String, val innerTypes: Vector[Type]) extends Type {

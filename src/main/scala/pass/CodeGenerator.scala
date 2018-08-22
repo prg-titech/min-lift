@@ -5,6 +5,8 @@ import ast._
 class CodeGenerator extends Visitor[Unit, String] {
   type ArgType = Unit
 
+  val chunkSize = 5
+
   override def visit(node: Lift, arg: ArgType): String = {
     val Expression.Lambda(params, body) = node.body
 
@@ -29,20 +31,44 @@ class CodeGenerator extends Visitor[Unit, String] {
         val Expression.Lambda(args, body) = node.args(0)
         val Expression.Identifier(collectionName, _) = node.args(1)
         val Type.Array(inner, length) = node.args(1).ty.get
-        val chunkSize = 5
+
         s"""
-           |int n = $chunkSize;
-           |int diff = $chunkSize * gid - N + 1;
-           |if (diff > 0) n = min(n, diff);
-           |for (int i = $chunkSize * gid; i < $chunkSize * gid + n; i++) {
-           |  ${inner.toCL} ${args(0).value} = ${collectionName}[i];
-           |  result[i] = ${node.args(0).accept(this, ())};
+           |{
+           |  int n = $chunkSize;
+           |  int diff = $chunkSize * gid - N + 1;
+           |  if (diff > 0) n = min(n, diff);
+           |  for (int i = $chunkSize * gid; i < $chunkSize * gid + n; i++) {
+           |    ${inner.toCL} ${args(0).value} = ${collectionName}[i];
+           |    result[i] = ${node.args(0).accept(this, ())};
+           |  }
+           |}
+         """.stripMargin
+      }
+      case Expression.Identifier("reduceSeq", false) => {
+        val init = node.args(0).accept(this, ())
+        val Expression.Lambda(args, body) = node.args(1)
+        val Expression.Identifier(collectionName, _) = node.args(2)
+        val Type.Array(inner, length) = node.args(2).ty.get
+        val resultType = node.callee.ty.get.asInstanceOf[Type.Arrow].lastResultType
+
+        s"""
+           |{
+           |  ${resultType.toCL} ${args(0).value} = ${init}
+           |  for (int i = 0; i < ${length.toCL}; i++) {
+           |    ${inner.toCL} ${args(1).value} = ${collectionName}[i];
+           |    ${args(0).value} = ${node.args(1).accept(this, ())};
+           |  }
            |}
          """.stripMargin
       }
       case Expression.Identifier("*", false) => {
         s"""
            |${node.args(0).accept(this, ())} * ${node.args(1).accept(this, ())}
+         """.stripMargin
+      }
+      case Expression.Identifier("+", false) => {
+        s"""
+           |${node.args(0).accept(this, ())} + ${node.args(1).accept(this, ())}
          """.stripMargin
       }
     }
