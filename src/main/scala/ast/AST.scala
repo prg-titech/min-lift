@@ -73,7 +73,7 @@ object Type {
   case object Int extends Scalar("int")
 
   case class Array(val innerType: Type, val size: Type) extends Type {
-    override def toCL: String = s"$innerType*"
+    override def toCL: String = s"${innerType.toCL}*"
 
     override def hasTypeVar(typeVar: TypeVar): Boolean = {
       innerType.hasTypeVar(typeVar) || size.hasTypeVar(typeVar)

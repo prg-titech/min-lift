@@ -7,6 +7,15 @@ class CodeGenerator extends Visitor[Unit, String] {
 
   val chunkSize = 5
 
+  var tempCount = 0
+  def mkTemp: String = {
+    tempCount += 1
+    interVarName
+  }
+  def interVarName: String = {
+    s"temp${tempCount}"
+  }
+
   override def visit(node: Lift, arg: ArgType): String = {
     val Expression.Lambda(params, body) = node.body
 
@@ -21,7 +30,12 @@ class CodeGenerator extends Visitor[Unit, String] {
       |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
       |     int gid = get_global_id(0);
       |     ${body.accept(this, ())}
-      |  }
+      |
+      |     // TODO: remove unnecessary copy
+      |     for (int i = 0; i < N; i++) {
+      |         result[i] = $interVarName[i];
+      |     }
+      |}
     """.stripMargin
   }
 
@@ -29,17 +43,33 @@ class CodeGenerator extends Visitor[Unit, String] {
     node.callee match {
       case Expression.Identifier("mapSeq", false) => {
         val Expression.Lambda(args, body) = node.args(0)
-        val Expression.Identifier(collectionName, _) = node.args(1)
+
+        var prevCode = ""
+
+        val collectionName = node.args(1) match {
+          case Expression.Identifier(name, false) => name
+          case arg@_ => {
+            prevCode = arg.accept(this, ())
+            interVarName
+          }
+        }
+
         val Type.Array(inner, length) = node.args(1).ty.get
 
+        val result = mkTemp
+
         s"""
+           |$prevCode
+           |// local ${inner.toCL} $result[${length.toCL}];
+           |local ${inner.toCL} $result[64];
            |{
-           |  int n = $chunkSize;
+           |  /*int n = $chunkSize;
            |  int diff = $chunkSize * gid - N + 1;
            |  if (diff > 0) n = min(n, diff);
-           |  for (int i = $chunkSize * gid; i < $chunkSize * gid + n; i++) {
+           |  for (int i = $chunkSize * gid; i < $chunkSize * gid + n; i++) {*/
+           |  for (int i = 0; i < ${length.toCL}; i++) {
            |    ${inner.toCL} ${args(0).value} = ${collectionName}[i];
-           |    result[i] = ${node.args(0).accept(this, ())};
+           |    $result[i] = ${node.args(0).accept(this, ())};
            |  }
            |}
          """.stripMargin
@@ -60,6 +90,13 @@ class CodeGenerator extends Visitor[Unit, String] {
            |  }
            |}
          """.stripMargin
+      }
+      case Expression.Identifier("join", false) => {
+        // do nothing
+        ""
+      }
+      case Expression.Identifier("o", false) => {
+        ""
       }
       case Expression.Identifier("*", false) => {
         s"""

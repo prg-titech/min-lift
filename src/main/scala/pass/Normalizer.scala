@@ -9,9 +9,16 @@ class Normalizer extends Visitor[Unit, Node] {
     Lift(node.variables, node.inputTypes, node.body.accept(this, ()).asInstanceOf[Expression.Lambda])
   }
 
-  // (((f x) y) z) -> ((f x) y z) -> (f x y z)
   override def visit(node: Expression.Apply, a: Unit): ResultType = {
     node.callee match {
+      case Expression.Identifier("o", false) => {
+        val f = node.args(0)
+        val g = node.args(1)
+        val arg = node.args(2)
+        val newApply = Expression.Apply(f, List(Expression.Apply(g, List(arg))))
+        newApply.accept(this, ())
+      }
+      // (((f x) y) z) -> ((f x) y z) -> (f x y z)
       case Expression.Apply(ccallee, cargs) => {
         val newApply = Expression.Apply(ccallee, cargs ++ node.args)
         newApply.accept(this, ())

@@ -1,4 +1,6 @@
 import org.scalatest.FunSpec
+import java.io.File
+
 import token._
 import parser._
 import ast._
@@ -52,6 +54,16 @@ class MinLiftSpec extends FunSpec {
           .callee.asInstanceOf[Apply] // mapSeq
         .args(0).asInstanceOf[Lambda]
       assertResult(Some(Type.Float ->: Type.Float))(lambdaOfMapSeq.ty)
+    }
+  }
+
+  describe("Integration testing") {
+    println((new File("./examples")).getAbsolutePath())
+    (new File("./examples")).listFiles(_.isFile).foreach { file =>
+      it(s"should compile ${file.getName()} successfully") {
+        MinLift.main(Array(file.getAbsolutePath()))
+        succeed
+      }
     }
   }
 
