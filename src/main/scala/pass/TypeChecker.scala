@@ -139,6 +139,11 @@ class TypeReplacer(val subst: Subst) extends Visitor[Unit, Unit] {
 object TypeChecker {
   def unify(subst: Subst): Either[String, Subst] = {
     subst match {
+      case SubstCons(t1, t2, _) => println(s"unifying $t1 and $t2")
+      case _ => {}
+    }
+
+    subst match {
       case SubstCons(ty1, ty2@TypeVar(_), next) => {
         if (ty1 == ty2) {
           unify(next)
@@ -147,7 +152,7 @@ object TypeChecker {
           Left(s"$ty1 and $ty2: circular constraints")
         }
         else {
-          unify(next.replaceBy(ty2, ty1)).map(_.append(ty2, ty1))
+          unify(next.replaceBy(ty2, ty1)).flatMap(_.appendByTypeVar(ty2, ty1))
         }
       }
       case SubstCons(ty1@TypeVar(_), ty2, next) => {
@@ -158,7 +163,7 @@ object TypeChecker {
           Left(s"$ty1 and $ty2: circular constraints")
         }
         else {
-          unify(next.replaceBy(ty1, ty2)).map(_.append(ty1, ty2))
+          unify(next.replaceBy(ty1, ty2)).flatMap(_.appendByTypeVar(ty1, ty2))
         }
       }
       case SubstCons(ty1@Scalar(_), ty2@Scalar(_), next) => {
@@ -200,10 +205,12 @@ object TypeChecker {
 
   def check(lift: Lift) = {
     val res = new TypeInferer().visit(lift, EmptyEnv())
-    println(AstPrinter.print(lift))
+    println(AstPrinter.print(lift) + "\n")
     res.flatMap { case (ty, subst) => {
+      println(subst)
       val unifyed = unify(subst)
       unifyed.map((unifyed) => {
+        println(unifyed)
         new TypeReplacer(unifyed).visit(lift, ())
         lift
       })
@@ -251,6 +258,14 @@ sealed trait Subst {
   def replaceBy(from: TypeVar, to: Type): Subst
 
   def append(t1: Type, t2: Type) = SubstCons(t1, t2, this)
+  def appendByTypeVar(t1: TypeVar, t2: Type): Either[String, Subst] = {
+    val t3 = lookup(t1)
+    if (t3 != t1 && !t2.isInstanceOf[TypeVar] && !t3.isInstanceOf[TypeVar]) {
+      Left(s"${t2} and ${t3} have a contradiction!")
+    } else {
+      Right(SubstCons(t1, t2, this))
+    }
+  }
   def concat(subst: Subst): Subst = subst match {
     case SubstCons(typeVar, ty, next) => append(typeVar, ty).concat(next)
     case EmptySubst() => this
@@ -299,12 +314,12 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
     if (x == t1) t2
     else next.lookup(x)
   }
-  override def toString: String = s"$t1 = $t2, " + next.toString
+  override def toString: String = s"\t$t1 = $t2, \n" + next.toString
 }
 
 case class EmptySubst() extends Subst {
   def lookup(x: TypeVar): Type = x
-  override def toString: String = "(empty)"
+  override def toString: String = "\t(empty)"
 
   def replace(ty: Type): Type = ty
   def replace(env: Env): Env = env
