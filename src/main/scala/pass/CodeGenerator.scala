@@ -1,6 +1,7 @@
 package pass
 
 import ast._
+import pass._
 
 class CodeGenerator extends Visitor[Unit, String] {
   type ArgType = Unit
@@ -61,12 +62,8 @@ class CodeGenerator extends Visitor[Unit, String] {
         s"""
            |$prevCode
            |// local ${inner.toCL} $result[${length.toCL}];
-           |local ${inner.toCL} $result[64];
+           |${node.addressSpace.getOrElse(MemoryAllocator.PrivateMemory).toCL} ${inner.toCL} $result[64];
            |{
-           |  /*int n = $chunkSize;
-           |  int diff = $chunkSize * gid - N + 1;
-           |  if (diff > 0) n = min(n, diff);
-           |  for (int i = $chunkSize * gid; i < $chunkSize * gid + n; i++) {*/
            |  for (int i = 0; i < ${length.toCL}; i++) {
            |    ${inner.toCL} ${args(0).value} = ${collectionName}[i];
            |    $result[i] = ${node.args(0).accept(this, ())};
@@ -95,9 +92,9 @@ class CodeGenerator extends Visitor[Unit, String] {
         // do nothing
         ""
       }
-      case Expression.Identifier("o", false) => {
-        ""
-      }
+//      case Expression.Identifier("o", false) => ""
+      case Expression.Identifier("toLocal", false) => node.args(0).accept(this, ())
+      case Expression.Identifier("toPrivate", false) => node.args(0).accept(this, ())
       case Expression.Identifier("*", false) => {
         s"""
            |${node.args(0).accept(this, ())} * ${node.args(1).accept(this, ())}

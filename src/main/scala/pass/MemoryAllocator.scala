@@ -6,10 +6,12 @@ import ast._
 // in "Lift: A Functional Data-Parallel IR for High-Performance GPU Code Generation"
 //    Michel Steuwer, Toomas Remmelg, Christophe Dubach
 object MemoryAllocator  {
-  sealed abstract class AddressSpace
-  case object PrivateMemory extends AddressSpace
-  case object LocalMemory extends AddressSpace
-  case object GlobalMemory extends AddressSpace
+  sealed abstract class AddressSpace(clModifier: String) {
+    def toCL: String = clModifier
+  }
+  case object PrivateMemory extends AddressSpace("private")
+  case object LocalMemory extends AddressSpace("local")
+  case object GlobalMemory extends AddressSpace("global")
 
   def inferAddressSpace(lift: Lift): Either[Unit, Unit] = {
     val Expression.Lambda(params, body) = lift.body
@@ -29,7 +31,10 @@ object MemoryAllocator  {
   def inferAddressSpaceExpr(expr: Expression, writeTo: Option[AddressSpace]): Unit = {
     import Expression._
 
-    println("inferASExpr", expr, writeTo)
+    println("inferAdressSpaceExpr", expr, writeTo)
+
+    // Is it needed?
+    expr.addressSpace = writeTo
 
     expr match {
       case Const(_) => expr.addressSpace = Some(PrivateMemory)
@@ -42,14 +47,13 @@ object MemoryAllocator  {
         f match {
           // TODO implement following expressions
           // case UserFun
-          // case toPrivate
-          // case toLocal
           // case toGlobal
           // case Reduce
           // case Iterate
           case l@Lambda(_, _) => inferAddressSpaceApply(l, args, writeTo)
-          // case Map(l@Lambda(_, _)) => inferAddressSpaceApply(l, args, writeTo)
           case Identifier("mapSeq", false) => inferAddressSpaceExpr(args(0), writeTo)
+          case Identifier("toLocal", false) => inferAddressSpaceExpr(args(0), Some(LocalMemory))
+          case Identifier("toPrivate", false) => inferAddressSpaceExpr(args(0), Some(PrivateMemory))
           case Apply(_, _) => inferAddressSpaceExpr(f, writeTo)
           case _ => expr.addressSpace = args.lift(0).flatMap(_.addressSpace) // not args.addressSpace
         }

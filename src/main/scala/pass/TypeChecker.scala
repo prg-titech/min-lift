@@ -30,6 +30,8 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
       ("reduceSeq" -> TypeScheme(List(a, b, c), b ->: (b ->: a ->: b) ->: Array(a, c) ->: b)),
       ("split" -> TypeScheme(List(a, b, c), a ->: Array(b, c) ->: Array(Array(b, a), SizeDivision(c, a)))),
       ("join" -> TypeScheme(List(a, b, c), Array(Array(a, b), c) ->: Array(a, SizeMultiply(b, c)))),
+      ("toLocal" -> TypeScheme(List(a, b), Array(a, b) ->: Array(a, b))),
+      ("toPrivate" -> TypeScheme(List(a, b), Array(a, b) ->: Array(a, b))),
       ("o" -> TypeScheme(List(a, b, c), (b ->: c) ->: (a ->: b) ->: (a ->: c))),
       ("*" -> TypeScheme(List(), Float ->: Float ->: Float)),
       ("+" -> TypeScheme(List(), Float ->: Float ->: Float))))
@@ -259,12 +261,13 @@ sealed trait Subst {
 
   def append(t1: Type, t2: Type) = SubstCons(t1, t2, this)
   def appendByTypeVar(t1: TypeVar, t2: Type): Either[String, Subst] = {
-    val t3 = lookup(t1)
-    if (t3 != t1 && !t2.isInstanceOf[TypeVar] && !t3.isInstanceOf[TypeVar]) {
-      Left(s"${t2} and ${t3} have a contradiction!")
-    } else {
-      Right(SubstCons(t1, t2, this))
-    }
+    Right(SubstCons(t1, t2, this))
+//    val t3 = lookup(t1)
+//    if (t3 != t1 && t2 != t3 && !t2.isInstanceOf[TypeVar] && !t3.isInstanceOf[TypeVar]) {
+//      Left(s"${t2} and ${t3} have a contradiction!")
+//    } else {
+//      Right(SubstCons(t1, t2, this))
+//    }
   }
   def concat(subst: Subst): Subst = subst match {
     case SubstCons(typeVar, ty, next) => append(typeVar, ty).concat(next)
