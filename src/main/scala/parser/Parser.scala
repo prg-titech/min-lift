@@ -4,11 +4,12 @@ import scala.reflect.{ClassTag, classTag}
 
 import token._
 import ast._
+import errors._
 
 class Parser(val tokens: Vector[Token]) {
   var pos = 0
 
-  type ErrType = String
+  type ErrType = ParseError
   type ParseResult = Either[ErrType, Expression]
 
   def parseLift(): Either[ErrType, Lift] = {
@@ -49,7 +50,7 @@ class Parser(val tokens: Vector[Token]) {
         val Identifier(value) = tok
         value match {
           case "float" => Right(Type.Float)
-          case _ => Left(s"unknown type ${value}")
+          case _ => Left(ParseError(s"unknown type ${value}", tok.pos))
         }
       }
     }
@@ -65,7 +66,7 @@ class Parser(val tokens: Vector[Token]) {
           case DoubleLiteral(value) => Right(Expression.Const[Double](value))
           case IntLiteral(value) => Right(Expression.Const[Int](value))
           case SizeConstLiteral(value) => Right(Expression.Size(value))
-          case _ => Left(s"unknown token ${cur.getClass.getName}")
+          case _ => Left(ParseError(s"unknown token ${cur.getClass.getName}", cur.pos))
         }
         pos += 1
         expr
@@ -125,26 +126,26 @@ class Parser(val tokens: Vector[Token]) {
   }
 
   def consume(token: Token): Either[ErrType, Token] = {
-    tokens.lift(pos).toRight(s"unexpected EOF, expected: ${token}").flatMap(curr => {
+    tokens.lift(pos).toRight(ParseError(s"unexpected EOF, expected: ${token}", tokens.last.pos)).flatMap(curr => {
       if (curr.equals(token)) {
         pos += 1
         Right(curr)
       }
       else {
-        Left(s"unexpected '${curr}', expected: '${token}'")
+        Left(ParseError(s"unexpected '${curr}', expected: '${token}'", curr.pos))
       }
     })
   }
 
   def consume[T <: Token : ClassTag](): Either[ErrType, Token] = {
     val klass = classTag[T].runtimeClass
-    tokens.lift(pos).toRight(s"unexpected EOF, expected: ${klass.getName}").flatMap(curr => {
+    tokens.lift(pos).toRight(ParseError(s"unexpected EOF, expected: ${klass.getName}", tokens.last.pos)).flatMap(curr => {
       if (klass.isInstance(curr)) {
         pos += 1
         Right(curr)
       }
       else {
-        Left(s"unexpected '${curr}', expected: '${klass.getName}'")
+        Left(ParseError(s"unexpected '${curr}', expected: '${klass.getName}'", curr.pos))
       }
     })
   }
@@ -165,7 +166,7 @@ class Parser(val tokens: Vector[Token]) {
 
   def eof(): Either[ErrType, Unit] = {
     if (pos < tokens.length) {
-      Left("expected EOF")
+      Left(ParseError("expected EOF", tokens.last.pos))
     }
     else {
       Right(Unit)
@@ -176,3 +177,4 @@ class Parser(val tokens: Vector[Token]) {
 object Parser {
   def parse(tokens: Vector[Token]) = (new Parser(tokens)).parseLift()
 }
+

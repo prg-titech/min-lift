@@ -5,6 +5,7 @@ import token._
 import parser._
 import ast._
 import pass.TypeChecker
+import errors._
 
 class MinLiftSpec extends FunSpec {
 
@@ -67,7 +68,7 @@ class MinLiftSpec extends FunSpec {
     }
   }
 
-  def safeParse(code: String): Either[String, Lift] = {
+  def safeParse(code: String): Either[LiftError, Lift] = {
     Token.tokenize(code).flatMap(tokens => Parser.parse(tokens))
   }
   def parse(code: String): Lift = safeParse(code).right.get

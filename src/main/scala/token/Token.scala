@@ -1,25 +1,36 @@
 package token
 
-sealed abstract class Token
+import errors._
 
 object Token {
-  def tokenize(source: String): Either[String, Vector[Token]] = {
+  def tokenize(source: String): Either[LexerError, Vector[Token]] = {
     var index = 0
     var tokens = Vector.empty[Token]
+
+    var line = 0
+    var col = 0
 
     val idRegex = """([a-zA-Z+\-\*\/$])""".r
     val headOfNumRegex = """([+\-0-9])""".r
 
     def readWhile(f: Char => Boolean): String = {
       var value = Vector.empty[Char]
-      while (f(source(index))) {
+      while (index < source.size && f(source(index))) {
         value :+= source(index)
         index += 1
       }
       value.mkString
     }
 
+    def pos: Position = {
+      Position(line, col)
+    }
+
     while (index < source.length) {
+      val prevIndex = index
+
+      var newLine = false
+
       val token: Option[Token] = source(index) match {
         case '(' => Some(LParen)
         case ')' => Some(RParen)
@@ -57,23 +68,41 @@ object Token {
           index -= 1
           Some(SizeConstLiteral(value.toInt))
         }
-        case ' ' | '\r' | '\n' | '\t' => None
+        case ' ' | '\r' | '\t' => None
+        case '\n' => {
+          newLine = true
+          None
+        }
         case ';' => {
+          newLine = true
           readWhile(c => c != '\n')
           None
         }
-        case _ => return Left(s"unknown character ${source(index)}")
+        case _ => return Left(LexerError(s"unknown character ${source(index)}", pos))
       }
 
-      token.map(tok => tokens :+= tok)
+      token.map{ tok =>
+        tok.pos = pos
+        tokens :+= tok
+      }
 
       index += 1
+
+      col += index - prevIndex
+
+      if (newLine) {
+        line += 1
+        col = 0
+      }
     }
 
     Right(tokens)
   }
 }
 
+sealed abstract class Token {
+  var pos = Position(0, 0)
+}
 case object LParen extends Token
 case object RParen extends Token
 case object LBracket extends Token
