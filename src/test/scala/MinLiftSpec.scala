@@ -60,10 +60,11 @@ class MinLiftSpec extends FunSpec {
 
   describe("Integration testing") {
     println((new File("./examples")).getAbsolutePath())
-    (new File("./examples")).listFiles(_.isFile).foreach { file =>
+    (new File("./examples")).listFiles(f => f.isFile && f.getName().endsWith(".lisp")).foreach { file =>
       it(s"should compile ${file.getName()} successfully") {
-        MinLift.main(Array(file.getAbsolutePath()))
-        succeed
+        val ret = MinLift.compile(file.getAbsolutePath())
+        lazy val clue = if (ret.isLeft) { s"'${ret.left.get}'" } else { "" }
+        assertResult(true, clue)(ret.isRight)
       }
     }
   }
