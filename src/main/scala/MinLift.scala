@@ -8,16 +8,11 @@ import ast._
 import pass._
 
 object MinLift {
-  def main(args: Array[String]): Unit = {
-    val srcPath = args(0)
-    val destPath = srcPath.substring(0, srcPath.lastIndexOf('.')) + ".cl"
-
+  def compile(srcPath: String): Either[Any, String] = {
     val source = Source.fromFile(srcPath).getLines().mkString("\n")
-//    val tokens = tokenize("(+ 1 2)")
-    val res = for (
+    for (
        tokens <- Token.tokenize(source);
        ast <- Parser.parse(tokens);
-       // typedAst <- TypeChecker.check(ast);
        typedAst <- Right(ast);
        norm <- Right(Normalizer.normalize(typedAst));
        _ <- Right(println(AstPrinter.print(norm)));
@@ -27,18 +22,26 @@ object MinLift {
        _ <- Right(println(AstPrinter.print(typedNorm)));
        code <- Right(CodeGenerator.generate(typedNorm))
     ) yield {
-      println(tokens)
-      println("success checking type and allocating memory!")
-
-      println(code)
-      val dest = new PrintWriter(destPath)
-      dest.write(code)
-      dest.close()
-      println("output code\n")
+      code
     }
+  }
 
-    if (res.isLeft) {
-      println(res.left.get)
+  def main(args: Array[String]): Unit = {
+    val srcPath = args(0)
+
+    compile(srcPath) match {
+      case Right(code) => {
+        println("success checking type and allocating memory!")
+
+        val destPath = srcPath.substring(0, srcPath.lastIndexOf('.')) + ".cl"
+        val dest = new PrintWriter(destPath)
+        dest.write(code)
+        dest.close()
+        println("output code\n")
+      }
+      case Left(err) => {
+        println(err)
+      }
     }
   }
 }

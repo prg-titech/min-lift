@@ -107,19 +107,23 @@ object Type {
     def hasTypeVar(typeVar: TypeVar): Boolean = {
       a.hasTypeVar(typeVar) || b.hasTypeVar(typeVar)
     }
-
-    def replaceBy(from: TypeVar, to: Type): Type = {
-      SizeDivision(a.replaceBy(from, to), b.replaceBy(from, to))
-    }
   }
   object SizeBinaryOperator {
     def unapply(size: SizeBinaryOperator): Option[(Type, Type)] = Some((size.a, size.b))
   }
   case class SizeDivision(dividend: Type, divisor: Type) extends SizeBinaryOperator(dividend, divisor) {
     override def toString: String = s"$dividend/$divisor"
+
+    def replaceBy(from: TypeVar, to: Type): Type = {
+      SizeDivision(a.replaceBy(from, to), b.replaceBy(from, to))
+    }
   }
   case class SizeMultiply(x: Type, y: Type) extends SizeBinaryOperator(x, y) {
     override def toString: String = s"$a*$b"
+
+    def replaceBy(from: TypeVar, to: Type): Type = {
+      SizeMultiply(a.replaceBy(from, to), b.replaceBy(from, to))
+    }
   }
 }
 

@@ -48,7 +48,7 @@ class MinLiftSpec extends FunSpec {
 
       val lift = parse(code)
 
-      assert(TypeChecker.check(lift).isInstanceOf[Either[String, Expression]])
+      assert(TypeChecker.check(lift).isInstanceOf[Right[String, Expression]])
       val lambdaOfMapSeq = lift
         .body.asInstanceOf[Lambda]
           .body.asInstanceOf[Apply]
@@ -63,8 +63,7 @@ class MinLiftSpec extends FunSpec {
     (new File("./examples")).listFiles(f => f.isFile && f.getName().endsWith(".lisp")).foreach { file =>
       it(s"should compile ${file.getName()} successfully") {
         val ret = MinLift.compile(file.getAbsolutePath())
-        lazy val clue = if (ret.isLeft) { s"'${ret.left.get}'" } else { "" }
-        assertResult(true, clue)(ret.isRight)
+        assert(ret.isInstanceOf[Right[Any, String]])
       }
     }
   }

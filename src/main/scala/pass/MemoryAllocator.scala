@@ -31,8 +31,6 @@ object MemoryAllocator  {
   def inferAddressSpaceExpr(expr: Expression, writeTo: Option[AddressSpace]): Unit = {
     import Expression._
 
-    println("inferAdressSpaceExpr", expr, writeTo)
-
     // Is it needed?
     expr.addressSpace = writeTo
 

@@ -139,68 +139,60 @@ class TypeReplacer(val subst: Subst) extends Visitor[Unit, Unit] {
 }
 
 object TypeChecker {
-  def unify(subst: Subst): Either[String, Subst] = {
+  def unify(subst: Subst, result: Subst): Either[String, Subst] = {
     subst match {
-      case SubstCons(t1, t2, _) => println(s"unifying $t1 and $t2")
-      case _ => {}
-    }
-
-    subst match {
-      case SubstCons(ty1, ty2@TypeVar(_), next) => {
-        if (ty1 == ty2) {
-          unify(next)
-        }
-        else if (ty1.hasTypeVar(ty2)) {
-          Left(s"$ty1 and $ty2: circular constraints")
-        }
-        else {
-          unify(next.replaceBy(ty2, ty1)).flatMap(_.appendByTypeVar(ty2, ty1))
-        }
-      }
       case SubstCons(ty1@TypeVar(_), ty2, next) => {
         if (ty1 == ty2) {
-          unify(next)
+          unify(next, result)
         }
         else if (ty2.hasTypeVar(ty1)) {
           Left(s"$ty1 and $ty2: circular constraints")
         }
         else {
-          unify(next.replaceBy(ty1, ty2)).flatMap(_.appendByTypeVar(ty1, ty2))
+          unify(next.replaceBy(ty1, ty2), result.replaceBy(ty1, ty2).append(ty1, ty2))
         }
+      }
+      case SubstCons(ty1, ty2@TypeVar(_), next) => {
+        unify(next.append(ty2, ty1), result)
       }
       case SubstCons(ty1@Scalar(_), ty2@Scalar(_), next) => {
         if (ty1 == ty2) {
-          unify(next)
+          unify(next, result)
         }
         else {
           Left(s"$ty1 and $ty2: unsolvable constraints")
         }
       }
       case SubstCons(Arrow(tyS1, tyS2), Arrow(tyT1, tyT2), next) => {
-        unify(next.append(tyS1, tyT1).append(tyS2, tyT2))
+        unify(next.append(tyS1, tyT1).append(tyS2, tyT2), result)
       }
       case SubstCons(ty1@TypeCon(name1, it1), ty2@TypeCon(name2, it2), next) => {
         if (name1 == name2) {
           val itSubst = it1.zip(it2).foldRight(next)((ty, subst) => {
             subst.append(ty._1, ty._2)
           })
-          unify(itSubst)
+          unify(itSubst, result)
         }
         else {
           Left(s"$ty1 and $ty2: unsolvable constraints")
         }
       }
       case SubstCons(ty1@Array(it1, size1), ty2@Array(it2, size2), next) => {
-        unify(next.append(it1, it2).append(size1, size2))
+        unify(next.append(it1, it2).append(size1, size2), result)
       }
       case SubstCons(ty1@SizeBinaryOperator(a1, b1), ty2@SizeBinaryOperator(a2, b2), next) => {
-        unify(next.append(a1, b1).append(a2, b2))
+        unify(next.append(a1, b1).append(a2, b2), result)
       }
       case SubstCons(ty1, ty2, next) => {
-        Left(s"$ty1 and $ty2: unsolvable constraints")
+        if (ty1 == ty2) {
+          unify(next, result)
+        }
+        else {
+          Left(s"$ty1 and $ty2: unsolvable constraints")
+        }
       }
       case EmptySubst() => {
-        Right(EmptySubst())
+        Right(result)
       }
     }
   }
@@ -209,10 +201,8 @@ object TypeChecker {
     val res = new TypeInferer().visit(lift, EmptyEnv())
     println(AstPrinter.print(lift) + "\n")
     res.flatMap { case (ty, subst) => {
-      println(subst)
-      val unifyed = unify(subst)
+      val unifyed = unify(subst, EmptySubst())
       unifyed.map((unifyed) => {
-        println(unifyed)
         new TypeReplacer(unifyed).visit(lift, ())
         lift
       })
@@ -253,26 +243,22 @@ case class EmptyEnv() extends Env {
 
 sealed trait Subst {
   def lookup(x: TypeVar): Type
+  def lookupByValue(x: Type): Type
   def toString: String
 
   def replace(ty: Type): Type
   def replace(env: Env): Env
   def replaceBy(from: TypeVar, to: Type): Subst
 
-  def append(t1: Type, t2: Type) = SubstCons(t1, t2, this)
-  def appendByTypeVar(t1: TypeVar, t2: Type): Either[String, Subst] = {
-    Right(SubstCons(t1, t2, this))
-//    val t3 = lookup(t1)
-//    if (t3 != t1 && t2 != t3 && !t2.isInstanceOf[TypeVar] && !t3.isInstanceOf[TypeVar]) {
-//      Left(s"${t2} and ${t3} have a contradiction!")
-//    } else {
-//      Right(SubstCons(t1, t2, this))
-//    }
+  def append(t1: Type, t2: Type) = {
+    SubstCons(t1, t2, this)
   }
   def concat(subst: Subst): Subst = subst match {
     case SubstCons(typeVar, ty, next) => append(typeVar, ty).concat(next)
     case EmptySubst() => this
   }
+
+  def swapTypesIfValueIs(ty: Type): Subst
 }
 
 // Type -> Type
@@ -280,7 +266,12 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
   def replace(ty: Type): Type = ty match {
     case tv@TypeVar(name) => {
       val u = lookup(tv)
-      if (ty == u) { ty } else { replace(u) }
+      if (tv == u) {
+        tv
+      }
+      else {
+        replace(u)
+      }
     }
     case Arrow(argType, resultType) => {
       Arrow(replace(argType), replace(resultType))
@@ -310,21 +301,38 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
   }
 
   def replaceBy(from: TypeVar, to: Type): Subst = {
-    SubstCons(t1, t2.replaceBy(from, to), next.replaceBy(from, to))
+    SubstCons(t1.replaceBy(from, to), t2.replaceBy(from, to), next.replaceBy(from, to))
   }
 
   def lookup(x: TypeVar): Type = {
     if (x == t1) t2
     else next.lookup(x)
   }
+  def lookupByValue(x: Type): Type = {
+    if (x == t2) t1
+    else next.lookupByValue(x)
+  }
+
   override def toString: String = s"\t$t1 = $t2, \n" + next.toString
+
+  def swapTypesIfValueIs(ty: Type): Subst = {
+    if (t2 == ty) {
+      SubstCons(t2, t1, next.swapTypesIfValueIs(ty))
+    }
+    else {
+      SubstCons(t1, t2, next.swapTypesIfValueIs(ty))
+    }
+  }
 }
 
 case class EmptySubst() extends Subst {
   def lookup(x: TypeVar): Type = x
+  def lookupByValue(x: Type): Type = x
   override def toString: String = "\t(empty)"
 
   def replace(ty: Type): Type = ty
   def replace(env: Env): Env = env
   def replaceBy(from: TypeVar, to: Type): Subst = this
+
+  def swapTypesIfValueIs(ty: Type): Subst = this
 }
