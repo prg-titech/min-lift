@@ -1,12 +1,8 @@
 package ast
 
-sealed abstract class Node
+// sealed abstract class Node
 
-case class Lift(val variables: Vector[Type.Size], val inputTypes: Vector[Type], val body: Expression.Lambda) extends Node {
-  def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
-    visitor.visit(this, arg)
-  }
-}
+case class Lift(val variables: Vector[Type.Size], val inputTypes: Vector[Type], val body: Expression.Lambda)
 
 sealed abstract class Type {
   def toCL: String
@@ -127,7 +123,7 @@ object Type {
   }
 }
 
-sealed abstract class Expression extends Node {
+sealed abstract class Expression {
   // FIXME: don't use var
   var ty: Option[Type] = None
   var addressSpace: Option[pass.MemoryAllocator.AddressSpace] = None

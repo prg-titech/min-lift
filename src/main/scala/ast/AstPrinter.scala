@@ -5,7 +5,7 @@ class AstPrinter extends Visitor[Unit, String] {
     str.split("\n").map(l => s"  ${l}").mkString("\n")
   }
 
-  override def visit(node: Lift, a: Unit): String = {
+  def visit(node: Lift, a: Unit): String = {
     s"""
        |(lift
        |  (${node.variables.mkString(", ")})
@@ -38,5 +38,7 @@ class AstPrinter extends Visitor[Unit, String] {
 }
 
 object AstPrinter {
-  def print(node: Lift) = (new AstPrinter).visit(node, ())
+  def print(node: Lift) = {
+    (new AstPrinter).visit(node, ())
+  }
 }

@@ -14,9 +14,12 @@ object MinLift {
        tokens <- Token.tokenize(source);
        ast <- Parser.parse(tokens);
        typedAst <- Right(ast);
-       norm <- Right(Normalizer.normalize(typedAst));
+//       norm <- Right(Normalizer.normalize(typedAst));
+       norm <- Right(typedAst);
        _ <- Right(println(AstPrinter.print(norm)));
-       typedNorm <- TypeChecker.check(norm);
+       typedNorm <- Right(Normalizer.normalize(norm));
+       typedNorm <- TypeChecker.check(typedNorm);
+       typedNorm <- Right(TypedNormalizer.normalize(typedNorm));
        _ <- MemoryAllocator.inferAddressSpace(typedNorm);
        _ <- Right(println("=== typedNorm ==="));
        _ <- Right(println(AstPrinter.print(typedNorm)));
@@ -38,6 +41,7 @@ object MinLift {
         dest.write(code)
         dest.close()
         println("output code\n")
+        println(code)
       }
       case Left(err) => {
         println(err)

@@ -4,7 +4,6 @@ trait Visitor[A, R] {
   type ArgumentType = A
   type ResultType = R
 
-  def visit(node: Lift, arg: A): R
   def visit(node: Expression.Apply, arg: A): R
   def visit(node: Expression.Lambda, arg: A): R
   def visit(node: Expression.Identifier, arg: A): R

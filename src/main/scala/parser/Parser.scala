@@ -9,7 +9,7 @@ import errors._
 class Parser(val tokens: Vector[Token]) {
   var pos = 0
 
-  type ErrType = ParseError
+  type ErrType = LiftError
   type ParseResult = Either[ErrType, Expression]
 
   def parseLift(): Either[ErrType, Lift] = {

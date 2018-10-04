@@ -4,7 +4,7 @@ import ast._
 import pass._
 
 class CodeGenerator extends Visitor[Unit, String] {
-  type ArgType = Unit
+  val defaultArg = ()
 
   val chunkSize = 5
 
@@ -17,7 +17,7 @@ class CodeGenerator extends Visitor[Unit, String] {
     s"temp${tempCount}"
   }
 
-  override def visit(node: Lift, arg: ArgType): String = {
+  def visit(node: Lift, arg: ArgumentType): ResultType = {
     val Expression.Lambda(params, body) = node.body
 
     def generateParam(ty: Type, param: Expression.Identifier): String = {
@@ -40,7 +40,7 @@ class CodeGenerator extends Visitor[Unit, String] {
     """.stripMargin
   }
 
-  override def visit(node: Expression.Apply, arg: ArgType): String = {
+  override def visit(node: Expression.Apply, arg: ArgumentType): ResultType = {
     node.callee match {
       case Expression.Identifier("mapSeq", false) => {
         val Expression.Lambda(args, body) = node.args(0)
@@ -92,7 +92,6 @@ class CodeGenerator extends Visitor[Unit, String] {
         // do nothing
         ""
       }
-//      case Expression.Identifier("o", false) => ""
       case Expression.Identifier("toLocal", false) => node.args(0).accept(this, ())
       case Expression.Identifier("toPrivate", false) => node.args(0).accept(this, ())
       case Expression.Identifier("*", false) => {
@@ -108,15 +107,15 @@ class CodeGenerator extends Visitor[Unit, String] {
     }
   }
 
-  override def visit(node: Expression.Lambda, arg: ArgType): String = {
+  override def visit(node: Expression.Lambda, arg: ArgumentType): ResultType = {
     node.body.accept(this, ())
   }
 
-  override def visit(node: Expression.Identifier, arg: ArgType): String = node.value
+  override def visit(node: Expression.Identifier, arg: ArgumentType): ResultType = node.value
 
-  override def visit[U](node: Expression.Const[U], arg: ArgType): String = node.value.toString
+  override def visit[U](node: Expression.Const[U], arg: ArgumentType): ResultType = node.value.toString
 
-  override def visit(node: Expression.Size, arg: ArgType): String = node.value.toString
+  override def visit(node: Expression.Size, arg: ArgumentType): ResultType = node.value.toString
 }
 
 object CodeGenerator {

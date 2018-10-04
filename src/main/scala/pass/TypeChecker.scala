@@ -14,7 +14,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
     t
   }
 
-  override def visit(lift: Lift, _env: ArgumentType): ResultType = {
+  def visit(lift: Lift, _env: ArgumentType): ResultType = {
     val Lambda(args, _) = lift.body
 
     val lambdaEnv = args.zip(lift.inputTypes).map { case (id, ty) =>
@@ -109,7 +109,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
 }
 
 class TypeReplacer(val subst: Subst) extends Visitor[Unit, Unit] {
-  override def visit(node: Lift, arg: Unit): Unit = {
+  def visit(node: Lift, arg: Unit): Unit = {
     node.body.accept(this, ())
   }
 

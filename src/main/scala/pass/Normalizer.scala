@@ -2,15 +2,10 @@ package pass
 
 import ast._
 
-class Normalizer extends Visitor[Unit, Node] {
-  type Value = Node
-
-  override def visit(node: Lift, a: Unit): ResultType = {
-    Lift(node.variables, node.inputTypes, node.body.accept(this, ()).asInstanceOf[Expression.Lambda])
-  }
-
+class Normalizer extends Visitor[Unit, Expression] {
   override def visit(node: Expression.Apply, a: Unit): ResultType = {
     node.callee match {
+      // (o f g x) -> (f (g x))
       case Expression.Identifier("o", false) => {
         val f = node.args(0)
         val g = node.args(1)
@@ -25,14 +20,14 @@ class Normalizer extends Visitor[Unit, Node] {
       }
       case _ => {
         Expression.Apply(
-          node.callee.accept(this, ()).asInstanceOf[Expression],
-          node.args.map(_.accept(this, ()).asInstanceOf[Expression]))
+          node.callee.accept(this, ()),
+          node.args.map(_.accept(this, ())))
       }
     }
   }
 
   override def visit(node: Expression.Lambda, a: Unit): ResultType = {
-    Expression.Lambda(node.args, node.body.accept(this, ()).asInstanceOf[Expression])
+    Expression.Lambda(node.args, node.body.accept(this, ()))
   }
 
   override def visit(node: Expression.Identifier, a: Unit): ResultType = {
@@ -49,5 +44,8 @@ class Normalizer extends Visitor[Unit, Node] {
 }
 
 object Normalizer {
-  def normalize(node: Lift) = (new Normalizer).visit(node, ()).asInstanceOf[Lift]
+  def normalize(node: Lift) = {
+    val norm = new Normalizer
+    Lift(node.variables, node.inputTypes, node.body.accept(norm, ()).asInstanceOf[Expression.Lambda])
+  }
 }
