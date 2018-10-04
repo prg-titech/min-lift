@@ -1,5 +1,6 @@
 a.out
-runtime
+runtime/runtime
+runtime/profiler
 profiler
 *.cl
 
