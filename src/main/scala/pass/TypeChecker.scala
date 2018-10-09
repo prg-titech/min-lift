@@ -50,8 +50,8 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
       val lambdaType = lambdaEnv.foldRight(ty)((argTy, ty) => {
         argTy._2.toType(this) ->: ty
       })
-      lambda.args.zip(lambdaEnv).foreach { case (arg, e) => arg.ty = Some(e._2.toType(this)) }
-      lambda.ty = Some(lambdaType)
+      lambda.args.zip(lambdaEnv).foreach { case (arg, e) => arg.ty = e._2.toType(this) }
+      lambda.ty = lambdaType
       (lambdaType, subst)
     }
   }
@@ -76,7 +76,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
         val calleeType = args.reverse.foldRight(resultType: Type)((arg, ty) =>
           arg._1 ->: ty
         )
-        apply.ty = Some(resultType)
+        apply.ty = resultType
         (resultType, subst1.concat(argSubst).append(ty1, calleeType))
       })
     }
@@ -86,7 +86,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
     env.lookup(id.value).toRight(s"undefined identifier ${id.value}")
         .map(ty => {
           val idType  = ty.toType(this)
-          id.ty = Some(idType)
+          id.ty = idType
           (idType, EmptySubst())
         })
   }
@@ -98,7 +98,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
         case v:Double => Double
         case v:Int => Int
       }
-      const.ty = Some(ty)
+      const.ty = ty
       Right(ty, EmptySubst())
     }
   }
@@ -117,18 +117,18 @@ class TypeReplacer(val subst: Subst) extends Visitor[Unit, Unit] {
     node.callee.accept(this, ())
     node.args.foreach(_.accept(this, ()))
 
-    node.ty = node.ty.map(subst.replace(_))
+    node.ty = subst.replace(node.ty)
   }
 
   override def visit(node: Lambda, arg: Unit): Unit = {
     node.args.foreach(_.accept(this, ()))
     node.body.accept(this, ())
 
-    node.ty = node.ty.map(subst.replace(_))
+    node.ty = subst.replace(node.ty)
   }
 
   override def visit(node: Identifier, arg: Unit): Unit = {
-    node.ty = node.ty.map(subst.replace(_))
+    node.ty = subst.replace(node.ty)
   }
 
   override def visit[C](node: Const[C], arg: Unit): Unit = {

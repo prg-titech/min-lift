@@ -41,6 +41,11 @@ object Type {
       case ty@Arrow(_, _) => ty.lastResultType
       case _ => resultType
     }
+
+    def args: List[Type] = resultType match {
+      case ty@Arrow(_, _) => argType :: ty.args
+      case _ => List(argType)
+    }
   }
 
   case class TypeCon(val name: String, val innerTypes: Vector[Type]) extends Type {
@@ -108,7 +113,8 @@ object Type {
     def unapply(size: SizeBinaryOperator): Option[(Type, Type)] = Some((size.a, size.b))
   }
   case class SizeDivision(dividend: Type, divisor: Type) extends SizeBinaryOperator(dividend, divisor) {
-    override def toString: String = s"$dividend/$divisor"
+    override def toString: String = s"$a/$b"
+    override def toCL: String = s"${a.toCL}/${b.toCL}"
 
     def replaceBy(from: TypeVar, to: Type): Type = {
       SizeDivision(a.replaceBy(from, to), b.replaceBy(from, to))
@@ -116,6 +122,7 @@ object Type {
   }
   case class SizeMultiply(x: Type, y: Type) extends SizeBinaryOperator(x, y) {
     override def toString: String = s"$a*$b"
+    override def toCL: String = s"${a.toCL}*${b.toCL}"
 
     def replaceBy(from: TypeVar, to: Type): Type = {
       SizeMultiply(a.replaceBy(from, to), b.replaceBy(from, to))
@@ -125,7 +132,7 @@ object Type {
 
 sealed abstract class Expression {
   // FIXME: don't use var
-  var ty: Option[Type] = None
+  var ty: Type = null
   var addressSpace: Option[pass.MemoryAllocator.AddressSpace] = None
 
   def accept[A, R](visitor: Visitor[A, R], arg: A): R

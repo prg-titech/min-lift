@@ -27,7 +27,7 @@ class CodeGenerator extends Visitor[Unit, String] {
     s"""
       |kernel void KERNEL(
       |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
-      |  global ${body.ty.get.toCL} result,
+      |  global ${body.ty.toCL} result,
       |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
       |     int gid = get_global_id(0);
       |     ${body.accept(this, ())}
@@ -55,7 +55,7 @@ class CodeGenerator extends Visitor[Unit, String] {
           }
         }
 
-        val Type.Array(inner, length) = node.args(1).ty.get
+        val Type.Array(inner, length) = node.args(1).ty
 
         val result = mkTemp
 
@@ -75,8 +75,8 @@ class CodeGenerator extends Visitor[Unit, String] {
         val init = node.args(0).accept(this, ())
         val Expression.Lambda(args, body) = node.args(1)
         val Expression.Identifier(collectionName, _) = node.args(2)
-        val Type.Array(inner, length) = node.args(2).ty.get
-        val resultType = node.callee.ty.get.asInstanceOf[Type.Arrow].lastResultType
+        val Type.Array(inner, length) = node.args(2).ty
+        val resultType = node.callee.ty.asInstanceOf[Type.Arrow].lastResultType
 
         s"""
            |{
@@ -89,6 +89,10 @@ class CodeGenerator extends Visitor[Unit, String] {
          """.stripMargin
       }
       case Expression.Identifier("join", false) => {
+        // do nothing
+        ""
+      }
+      case Expression.Identifier("split", false) => {
         // do nothing
         ""
       }

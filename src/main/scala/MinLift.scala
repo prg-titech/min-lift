@@ -20,9 +20,9 @@ object MinLift {
        typedNorm <- Right(Normalizer.normalize(norm));
        typedNorm <- TypeChecker.check(typedNorm);
        typedNorm <- Right(TypedNormalizer.normalize(typedNorm));
-       _ <- MemoryAllocator.inferAddressSpace(typedNorm);
        _ <- Right(println("=== typedNorm ==="));
        _ <- Right(println(AstPrinter.print(typedNorm)));
+       _ <- MemoryAllocator.inferAddressSpace(typedNorm);
        code <- Right(CodeGenerator.generate(typedNorm))
     ) yield {
       code

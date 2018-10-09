@@ -54,7 +54,7 @@ class MinLiftSpec extends FunSpec {
           .body.asInstanceOf[Apply]
           .callee.asInstanceOf[Apply] // mapSeq
         .args(0).asInstanceOf[Lambda]
-      assertResult(Some(Type.Float ->: Type.Float))(lambdaOfMapSeq.ty)
+      assertResult(Type.Float ->: Type.Float)(lambdaOfMapSeq.ty)
     }
   }
 
