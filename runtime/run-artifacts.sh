@@ -4,6 +4,7 @@ has_error=0
 for file in `ls $1/*.cl`; do
   if ! ./runtime --file $file -c -q ; then
     echo "compilation failed at $file"
+    echo "---------------------------------"
     has_error=1
   fi
 done

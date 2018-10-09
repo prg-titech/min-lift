@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# move to runtime dir
+cd `dirname $0`/../../runtime
+
+if ! make test; then
+  echo "You have compilation error(s) of generated OpenCL program(s)."
+fi
+
+exit 0
