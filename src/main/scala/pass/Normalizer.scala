@@ -6,11 +6,18 @@ class Normalizer extends Visitor[Unit, Expression] {
   override def visit(node: Expression.Apply, a: Unit): ResultType = {
     node.callee match {
       // (o f g x) -> (f (g x))
+      // (o f g)   -> (f g)
       case Expression.Identifier("o", false) => {
         val f = node.args(0)
         val g = node.args(1)
-        val arg = node.args(2)
-        val newApply = Expression.Apply(f, List(Expression.Apply(g, List(arg))))
+
+        val newApply = if (node.args.length > 2) {
+          val arg = node.args(2)
+          Expression.Apply(f, List(Expression.Apply(g, List(arg))))
+        } else {
+          Expression.Apply(f, List(g))
+        }
+
         newApply.accept(this, ())
       }
       // (((f x) y) z) -> ((f x) y z) -> (f x y z)

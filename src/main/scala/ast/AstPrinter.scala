@@ -15,13 +15,13 @@ class AstPrinter extends Visitor[Unit, String] {
   override def visit(node: Expression.Apply, a: Unit): String = {
     val args = node.args.map(_.accept(this, ())).mkString("\n")
     s"""
-       |(${node.callee.accept(this, ())}\n${pad(args)}):${node.ty}""".stripMargin
+       |(${node.callee.accept(this, ())}\n${pad(args)}):${node.ty}@${node.addressSpace}""".stripMargin
   }
 
   override def visit(node: Expression.Lambda, a: Unit): String = {
     s"""
        |(lambda
-       |  (${node.args.map(_.accept(this, ())).mkString("\n")})${pad(node.body.accept(this, ()))}):${node.ty}""".stripMargin
+       |  (${node.args.map(_.accept(this, ())).mkString("\n")})${pad(node.body.accept(this, ()))}):${node.ty}@${node.addressSpace}""".stripMargin
   }
 
   override def visit(node: Expression.Identifier, a: Unit): String = {

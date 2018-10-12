@@ -31,29 +31,40 @@ object MemoryAllocator  {
   def inferAddressSpaceExpr(expr: Expression, writeTo: Option[AddressSpace]): Unit = {
     import Expression._
 
-    // Is it needed?
+    // FIXME: Is it needed?
     expr.addressSpace = writeTo
 
     expr match {
       case Const(_) => expr.addressSpace = Some(PrivateMemory)
       case Identifier(_, true) /* as Param */ => assert(expr.addressSpace != None)
-      case Apply(f, argsAny) => {
-        val args = argsAny.map { case arg:Expression => arg }
-
-        args.foreach(arg => inferAddressSpaceExpr(arg, writeTo))
-
+      case Apply(f, args) => {
         f match {
           // TODO implement following expressions
           // case UserFun
-          // case toGlobal
-          // case Reduce
           // case Iterate
-          case l@Lambda(_, _) => inferAddressSpaceApply(l, args, writeTo)
-          case Identifier("mapSeq", false) => inferAddressSpaceExpr(args(0), writeTo)
-          case Identifier("toLocal", false) => inferAddressSpaceExpr(args(0), Some(LocalMemory))
-          case Identifier("toPrivate", false) => inferAddressSpaceExpr(args(0), Some(PrivateMemory))
-          case Apply(_, _) => inferAddressSpaceExpr(f, writeTo)
-          case _ => expr.addressSpace = args.lift(0).flatMap(_.addressSpace) // not args.addressSpace
+          case l@Lambda(_, _) => {
+            args.foreach(arg => inferAddressSpaceExpr(arg, writeTo))
+            inferAddressSpaceApply(l, args, writeTo)
+          }
+          case Identifier(funName, false) => {
+            val argsWriteTo = funName match {
+              case "toPrivate" => Some(PrivateMemory)
+              case "toLocal"   => Some(LocalMemory)
+              case "toGlobal"  => Some(GlobalMemory)
+              case "reduceSeq" => args(0).addressSpace
+              case "mapSeq"    => writeTo
+              case _ => writeTo
+            }
+            args.foreach(arg => inferAddressSpaceExpr(arg, argsWriteTo))
+          }
+          case Apply(_, _) => {
+            args.foreach(arg => inferAddressSpaceExpr(arg, writeTo))
+            inferAddressSpaceExpr(f, writeTo)
+          }
+          case _ => {
+            args.foreach(arg => inferAddressSpaceExpr(arg, writeTo))
+            expr.addressSpace = args.lift(0).flatMap(_.addressSpace) // not args.addressSpace
+          }
         }
       }
       case Lambda(_, body) => inferAddressSpaceExpr(body, writeTo)

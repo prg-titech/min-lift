@@ -23,8 +23,19 @@ object MinLift {
        _ <- Right(println("=== typedNorm ==="));
        _ <- Right(println(AstPrinter.print(typedNorm)));
        _ <- MemoryAllocator.inferAddressSpace(typedNorm);
+       _ <- Right(println("=== final ==="));
+       _ <- Right(println(AstPrinter.print(typedNorm)));
        code <- Right(CodeGenerator.generate(typedNorm))
     ) yield {
+      println("success checking type and allocating memory!")
+
+      val destPath = srcPath.substring(0, srcPath.lastIndexOf('.')) + ".cl"
+      val dest = new PrintWriter(destPath)
+      dest.write(code)
+      dest.close()
+      println("output code\n")
+      println(code)
+
       code
     }
   }
@@ -33,16 +44,7 @@ object MinLift {
     val srcPath = args(0)
 
     compile(srcPath) match {
-      case Right(code) => {
-        println("success checking type and allocating memory!")
-
-        val destPath = srcPath.substring(0, srcPath.lastIndexOf('.')) + ".cl"
-        val dest = new PrintWriter(destPath)
-        dest.write(code)
-        dest.close()
-        println("output code\n")
-        println(code)
-      }
+      case Right(code) => {}
       case Left(err) => {
         println(err)
       }

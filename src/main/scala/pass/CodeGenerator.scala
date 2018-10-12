@@ -1,21 +1,23 @@
 package pass
 
+import scala.collection._
+
 import ast._
-import pass._
+import pass.MemoryAllocator._
 
 class CodeGenerator extends Visitor[Unit, String] {
   val defaultArg = ()
 
   val chunkSize = 5
 
+  val passingVarStack = new mutable.MutableList[CLVariable]()
+
   var tempCount = 0
-  def mkTemp: String = {
+  def mkTemp: Unit = {
     tempCount += 1
-    interVarName
+    passingVarStack += CLVariable(s"temp$tempCount")
   }
-  def interVarName: String = {
-    s"temp${tempCount}"
-  }
+  def currentVar = passingVarStack.last
 
   def visit(node: Lift, arg: ArgumentType): ResultType = {
     val Expression.Lambda(params, body) = node.body
@@ -24,18 +26,24 @@ class CodeGenerator extends Visitor[Unit, String] {
       s"const global ${ty.toCL} restrict ${param.value}"
     }
 
+    // The result type is just a pointer.
+    val resultType = body.ty.toCL.stripSuffix("*") + "*";
+
+    // FIXME: can use multiple input
+    passingVarStack += CLVariable(params(0).value)
+
     s"""
       |kernel void KERNEL(
       |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
-      |  global ${body.ty.toCL} result,
+      |  global $resultType result,
       |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
       |     int gid = get_global_id(0);
       |     ${body.accept(this, ())}
       |
       |     // TODO: remove unnecessary copy
-      |     for (int i = 0; i < N; i++) {
-      |         result[i] = $interVarName[i];
-      |     }
+      |     /*for (int i = 0; i < N; i++) {
+      |         result[i] = ${currentVar.name}[i];
+      |     }*/
       |}
     """.stripMargin
   }
@@ -51,18 +59,24 @@ class CodeGenerator extends Visitor[Unit, String] {
           case Expression.Identifier(name, false) => name
           case arg@_ => {
             prevCode = arg.accept(this, ())
-            interVarName
+            currentVar.name
           }
         }
 
         val Type.Array(inner, length) = node.args(1).ty
 
-        val result = mkTemp
+        val (result, resultDecl) = if (node.addressSpace == Some(GlobalMemory)) {
+          passingVarStack += CLVariable("result")
+          ("result", "")
+        } else {
+          mkTemp
+          val r = currentVar.name
+          (r, s"${node.addressSpace.getOrElse(MemoryAllocator.PrivateMemory).toCL} ${inner.toCL} $r[64];")
+        }
 
         s"""
            |$prevCode
-           |// local ${inner.toCL} $result[${length.toCL}];
-           |${node.addressSpace.getOrElse(MemoryAllocator.PrivateMemory).toCL} ${inner.toCL} $result[64];
+           |$resultDecl
            |{
            |  for (int i = 0; i < ${length.toCL}; i++) {
            |    ${inner.toCL} ${args(0).value} = ${collectionName}[i];
@@ -80,7 +94,7 @@ class CodeGenerator extends Visitor[Unit, String] {
 
         s"""
            |{
-           |  ${resultType.toCL} ${args(0).value} = ${init}
+           |  ${resultType.toCL} ${args(0).value} = ${init};
            |  for (int i = 0; i < ${length.toCL}; i++) {
            |    ${inner.toCL} ${args(1).value} = ${collectionName}[i];
            |    ${args(0).value} = ${node.args(1).accept(this, ())};
@@ -96,6 +110,7 @@ class CodeGenerator extends Visitor[Unit, String] {
         // do nothing
         ""
       }
+      case Expression.Identifier("toGlobal", false) => node.args(0).accept(this, ())
       case Expression.Identifier("toLocal", false) => node.args(0).accept(this, ())
       case Expression.Identifier("toPrivate", false) => node.args(0).accept(this, ())
       case Expression.Identifier("*", false) => {
@@ -125,3 +140,5 @@ class CodeGenerator extends Visitor[Unit, String] {
 object CodeGenerator {
   def generate(node: Lift) = (new CodeGenerator).visit(node, ())
 }
+
+case class CLVariable(name: String)
