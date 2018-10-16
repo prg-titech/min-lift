@@ -30,9 +30,12 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
       ("reduceSeq" -> TypeScheme(List(a, b, c), b ->: (b ->: a ->: b) ->: Array(a, c) ->: Array(b, SizeConst(1)))),
       ("split" -> TypeScheme(List(a, b, c), a ->: Array(b, c) ->: Array(Array(b, a), SizeDivision(c, a)))),
       ("join" -> TypeScheme(List(a, b, c), Array(Array(a, b), c) ->: Array(a, SizeMultiply(b, c)))),
-      ("toGlobal" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
-      ("toLocal" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
-      ("toPrivate" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
+//      ("toGlobal" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
+//      ("toLocal" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
+//      ("toPrivate" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
+      ("toGlobal" -> TypeScheme(List(a), a ->: a)),
+      ("toLocal" -> TypeScheme(List(a), a ->: a)),
+      ("toPrivate" -> TypeScheme(List(a), a ->: a)),
       ("o" -> TypeScheme(List(a, b, c), (b ->: c) ->: (a ->: b) ->: (a ->: c))),
       ("*" -> TypeScheme(List(), Float ->: Float ->: Float)),
       ("+" -> TypeScheme(List(), Float ->: Float ->: Float))))
@@ -141,6 +144,13 @@ class TypeReplacer(val subst: Subst) extends Visitor[Unit, Unit] {
 
 object TypeChecker {
   def unify(subst: Subst, result: Subst): Either[String, Subst] = {
+//    subst match {
+//      case SubstCons(t1, t2, next) => {
+//        println(s"unifying $t1 and $t2")
+//      }
+//      case _ => {}
+//    }
+
     subst match {
       case SubstCons(ty1@TypeVar(_), ty2, next) => {
         if (ty1 == ty2) {
@@ -200,9 +210,10 @@ object TypeChecker {
 
   def check(lift: Lift) = {
     val res = new TypeInferer().visit(lift, EmptyEnv())
-    println(AstPrinter.print(lift) + "\n")
+//    println(AstPrinter.print(lift) + "\n")
     res.flatMap { case (ty, subst) => {
       val unifyed = unify(subst, EmptySubst())
+//      println(unifyed)
       unifyed.map((unifyed) => {
         new TypeReplacer(unifyed).visit(lift, ())
         lift

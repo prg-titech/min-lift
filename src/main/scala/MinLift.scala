@@ -13,19 +13,19 @@ object MinLift {
     for (
        tokens <- Token.tokenize(source);
        ast <- Parser.parse(tokens);
-       typedAst <- Right(ast);
+       ast <- Right(ast);
 //       norm <- Right(Normalizer.normalize(typedAst));
-       norm <- Right(typedAst);
-       _ <- Right(println(AstPrinter.print(norm)));
-       typedNorm <- Right(Normalizer.normalize(norm));
-       typedNorm <- TypeChecker.check(typedNorm);
-       typedNorm <- Right(TypedNormalizer.normalize(typedNorm));
+       ast <- Right(ast);
+       _ <- Right(println(AstPrinter.print(ast)));
+       ast <- Right(Normalizer.normalize(ast));
+       ast <- TypeChecker.check(ast);
+       ast <- Right(TypedNormalizer.normalize(ast));
        _ <- Right(println("=== typedNorm ==="));
-       _ <- Right(println(AstPrinter.print(typedNorm)));
-       _ <- MemoryAllocator.inferAddressSpace(typedNorm);
+       _ <- Right(println(AstPrinter.print(ast)));
+       _ <- MemoryAllocator.inferAddressSpace(ast);
        _ <- Right(println("=== final ==="));
-       _ <- Right(println(AstPrinter.print(typedNorm)));
-       code <- Right(CodeGenerator.generate(typedNorm))
+       _ <- Right(println(AstPrinter.print(ast)));
+       code <- Right(CodeGenerator.generate(ast))
     ) yield {
       println("success checking type and allocating memory!")
 

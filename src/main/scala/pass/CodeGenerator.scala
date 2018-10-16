@@ -39,19 +39,25 @@ class CodeGenerator extends Visitor[Unit, String] {
       |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
       |     int gid = get_global_id(0);
       |     ${body.accept(this, ())}
-      |
-      |     // TODO: remove unnecessary copy
-      |     /*for (int i = 0; i < N; i++) {
-      |         result[i] = ${currentVar.name}[i];
-      |     }*/
       |}
     """.stripMargin
+  }
+
+  def generateResult(addressSpace: Option[AddressSpace], ty: Type) = {
+    if (addressSpace == Some(GlobalMemory)) {
+      passingVarStack += CLVariable("result")
+      ("result", "")
+    } else {
+      mkTemp
+      val r = currentVar.name
+      (r, s"${addressSpace.getOrElse(MemoryAllocator.PrivateMemory).toCL} ${ty.toCL} $r[64];")
+    }
   }
 
   override def visit(node: Expression.Apply, arg: ArgumentType): ResultType = {
     node.callee match {
       case Expression.Identifier("mapSeq", false) => {
-        val Expression.Lambda(args, body) = node.args(0)
+        val Expression.Lambda(args, _) = node.args(0)
 
         var prevCode = ""
 
@@ -65,14 +71,7 @@ class CodeGenerator extends Visitor[Unit, String] {
 
         val Type.Array(inner, length) = node.args(1).ty
 
-        val (result, resultDecl) = if (node.addressSpace == Some(GlobalMemory)) {
-          passingVarStack += CLVariable("result")
-          ("result", "")
-        } else {
-          mkTemp
-          val r = currentVar.name
-          (r, s"${node.addressSpace.getOrElse(MemoryAllocator.PrivateMemory).toCL} ${inner.toCL} $r[64];")
-        }
+        val (result, resultDecl) = generateResult(node.addressSpace, inner)
 
         s"""
            |$prevCode
@@ -92,13 +91,20 @@ class CodeGenerator extends Visitor[Unit, String] {
         val Type.Array(inner, length) = node.args(2).ty
         val resultType = node.callee.ty.asInstanceOf[Type.Arrow].lastResultType
 
+        val (result, resultDecl) = generateResult(node.addressSpace, inner)
+
+        val acc = args(0).value
+
         s"""
            |{
-           |  ${resultType.toCL} ${args(0).value} = ${init};
+           |  ${resultType.toCL.stripSuffix("*")} $acc = $init;
            |  for (int i = 0; i < ${length.toCL}; i++) {
            |    ${inner.toCL} ${args(1).value} = ${collectionName}[i];
-           |    ${args(0).value} = ${node.args(1).accept(this, ())};
+           |    $acc = ${node.args(1).accept(this, ())};
            |  }
+           |  $resultDecl
+           |  $result[0] = $acc;
+           |
            |}
          """.stripMargin
       }
@@ -132,7 +138,7 @@ class CodeGenerator extends Visitor[Unit, String] {
 
   override def visit(node: Expression.Identifier, arg: ArgumentType): ResultType = node.value
 
-  override def visit[U](node: Expression.Const[U], arg: ArgumentType): ResultType = node.value.toString
+  override def visit[U](node: Expression.Const[U], arg: ArgumentType): ResultType = node.toCL
 
   override def visit(node: Expression.Size, arg: ArgumentType): ResultType = node.value.toString
 }

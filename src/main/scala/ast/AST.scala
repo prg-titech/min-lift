@@ -160,6 +160,12 @@ object Expression {
     def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
       visitor.visit(this, arg)
     }
+
+    def toCL: String = value match {
+      case v:Float => s"${value}f"
+      case v:Double => value.toString
+      case v:Int => value.toString
+    }
   }
 
   case class Size(val value: Int) extends Expression {
