@@ -37,7 +37,6 @@ class CodeGenerator extends Visitor[Unit, String] {
       |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
       |  global $resultType result,
       |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
-      |     int gid = get_global_id(0);
       |     ${body.accept(this, ())}
       |}
     """.stripMargin
@@ -78,9 +77,36 @@ class CodeGenerator extends Visitor[Unit, String] {
            |$resultDecl
            |{
            |  for (int i = 0; i < ${length.toCL}; i++) {
-           |    ${inner.toCL} ${args(0).value} = ${collectionName}[i];
+           |    ${inner.toCL} ${args(0).value} = $collectionName[i];
            |    $result[i] = ${node.args(0).accept(this, ())};
            |  }
+           |}
+         """.stripMargin
+      }
+      case Expression.Identifier("mapGlb", false) => {
+        val Expression.Lambda(args, _) = node.args(0)
+
+        var prevCode = ""
+
+        val collectionName = node.args(1) match {
+          case Expression.Identifier(name, false) => name
+          case arg@_ => {
+            prevCode = arg.accept(this, ())
+            currentVar.name
+          }
+        }
+
+        val Type.Array(inner, _) = node.args(1).ty
+
+        val (result, resultDecl) = generateResult(node.addressSpace, inner)
+
+        s"""
+           |$prevCode
+           |$resultDecl
+           |{
+           |  int gid = get_global_id(0);
+           |  ${inner.toCL} ${args(0).value} = $collectionName[gid];
+           |  $result[gid] = ${node.args(0).accept(this, ())};
            |}
          """.stripMargin
       }

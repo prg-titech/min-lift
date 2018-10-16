@@ -52,7 +52,7 @@ object MemoryAllocator  {
               case "toLocal"   => Some(LocalMemory)
               case "toGlobal"  => Some(GlobalMemory)
               case "reduceSeq" => args(0).addressSpace
-              case "mapSeq"    => writeTo
+              case "mapSeq" | "mapGlobal" => writeTo
               case _ => writeTo
             }
             args.foreach(arg => inferAddressSpaceExpr(arg, argsWriteTo))

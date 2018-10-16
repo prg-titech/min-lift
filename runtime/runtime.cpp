@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
     queue.enqueueWriteBuffer(xs, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_xs.data()));
 
     queue.enqueueNDRangeKernel(
-        kernel, cl::NullRange, cl::NDRange(std::ceil(N / static_cast<float>(CHUNK_SIZE))), cl::NullRange, nullptr, &event);
+        kernel, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
     event.wait();
 
     std::vector<float> raw_result(raw_xs.size());
