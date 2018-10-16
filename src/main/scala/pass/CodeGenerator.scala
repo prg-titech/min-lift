@@ -1,6 +1,8 @@
 package pass
 
 import scala.collection._
+import org.json4s.JsonDSL._
+import org.json4s.jackson.JsonMethods._
 
 import ast._
 import pass.MemoryAllocator._
@@ -32,7 +34,12 @@ class CodeGenerator extends Visitor[Unit, String] {
     // FIXME: can use multiple input
     passingVarStack += CLVariable(params(0).value)
 
-    s"""
+    val config = (
+      "ChunkSize" -> chunkSize
+    )
+
+    s"""// ${compact(render(config))}
+      |
       |kernel void KERNEL(
       |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
       |  global $resultType result,

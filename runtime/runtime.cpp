@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <cmath>
+#include <sstream>
 
 #define CL_HPP_ENABLE_EXCEPTIONS
 #define CL_HPP_MINIMUM_OPENCL_VERSION 100
@@ -11,8 +12,7 @@
 #include <CL/cl2.hpp>
 
 #include <cxxopts.hpp>
-
-const int CHUNK_SIZE = 5;
+#include <json.hpp>
 
 int main(int argc, char *argv[])
 {
@@ -42,6 +42,18 @@ int main(int argc, char *argv[])
       return 1;
     }
 
+    // read config
+    std::string config_json;
+    {
+      std::stringstream ss(code);
+      std::string first_line;
+      getline(ss, first_line, '\n');
+
+      config_json = first_line.substr(3);
+    }
+    auto config = nlohmann::json::parse(config_json);
+    const int CHUNK_SIZE = config["ChunkSize"].get<int>();
+
     cl_context_properties properties[] = {
       CL_CONTEXT_PLATFORM, (cl_context_properties)(platforms[0])(), 0
     };
@@ -51,6 +63,7 @@ int main(int argc, char *argv[])
 
     if (!quiet) {
       std::cout << "Using device: " << devices[0].getInfo<CL_DEVICE_NAME>() << std::endl;
+      std::cout << "Chunk size: " << CHUNK_SIZE << std::endl;
     }
 
     cl::Program program(context, code);
