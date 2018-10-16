@@ -10,7 +10,7 @@
 #define CL_HPP_TARGET_OPENCL_VERSION 120
 #include <CL/cl2.hpp>
 
-#include "cxxopts.hpp"
+#include <cxxopts.hpp>
 
 const int CHUNK_SIZE = 5;
 

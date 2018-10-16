@@ -1,7 +1,10 @@
 a.out
+
 runtime/runtime
 runtime/profiler
-profiler
+runtime/ext-include/*
+!runtime/ext-include/.keep
+
 *.cl
 
 # Created by https://www.gitignore.io/api/sbt,scala,intellij
