@@ -29,7 +29,7 @@ class CodeGenerator extends Visitor[Unit, String] {
     }
 
     // The result type is just a pointer.
-    val resultType = body.ty.toCL.stripSuffix("*") + "*";
+    val resultType = body.ty.toCL.takeWhile(_ != '*') + "*";
 
     // FIXME: can use multiple input
     passingVarStack += CLVariable(params(0).value)
@@ -129,13 +129,13 @@ class CodeGenerator extends Visitor[Unit, String] {
         val acc = args(0).value
 
         s"""
+           |$resultDecl
            |{
            |  ${resultType.toCL.stripSuffix("*")} $acc = $init;
            |  for (int i = 0; i < ${length.toCL}; i++) {
            |    ${inner.toCL} ${args(1).value} = ${collectionName}[i];
            |    $acc = ${node.args(1).accept(this, ())};
            |  }
-           |  $resultDecl
            |  $result[0] = $acc;
            |
            |}
