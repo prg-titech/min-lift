@@ -2,7 +2,7 @@ package pass
 
 import ast._
 
-class TypedNormalizer extends Visitor[Unit, Expression] {
+class TypedNormalizer extends ExpressionVisitor[Unit, Expression] {
   var varCount = 0
   def mkTemp: String = {
     varCount += 1

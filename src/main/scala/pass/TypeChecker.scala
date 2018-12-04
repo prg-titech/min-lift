@@ -3,8 +3,9 @@ package pass
 import ast._
 import ast.Type._
 import ast.Expression._
+import structures._
 
-class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
+class TypeInferer extends ExpressionVisitor[Environment[TypeScheme], Either[String, (Type, Subst)]] {
   // for identical typeVar
   var varCount = 0
 
@@ -25,7 +26,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
     val b = createTypeVar()
     val c = createTypeVar()
 
-    var env = _env.append(Map(
+    var env = _env.pushEnv(Map(
       ("mapSeq" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("mapGlb" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("reduceSeq" -> TypeScheme(List(a, b, c), b ->: (b ->: a ->: b) ->: Array(a, c) ->: Array(b, SizeConst(1)))),
@@ -40,7 +41,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
       ("o" -> TypeScheme(List(a, b, c), (b ->: c) ->: (a ->: b) ->: (a ->: c))),
       ("*" -> TypeScheme(List(), Float ->: Float ->: Float)),
       ("+" -> TypeScheme(List(), Float ->: Float ->: Float))))
-      .append(lambdaEnv.toMap)
+      .pushEnv(lambdaEnv.toMap)
 
     Apply(lift.body, args).accept(this, env)
   }
@@ -51,7 +52,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
       arg.value -> TypeScheme(List(), createTypeVar())
     })
 
-    body.accept(this, env.append(lambdaEnv.toMap)).map { case (ty, subst) =>
+    body.accept(this, env.pushEnv(lambdaEnv.toMap)).map { case (ty, subst) =>
       val lambdaType = lambdaEnv.foldRight(ty)((argTy, ty) => {
         argTy._2.toType(this) ->: ty
       })
@@ -113,7 +114,7 @@ class TypeInferer extends Visitor[Env, Either[String, (Type, Subst)]] {
   }
 }
 
-class TypeReplacer(val subst: Subst) extends Visitor[Unit, Unit] {
+class TypeReplacer(val subst: Subst) extends ExpressionVisitor[Unit, Unit] {
   def visit(node: Lift, arg: Unit): Unit = {
     node.body.accept(this, ())
   }
@@ -210,7 +211,7 @@ object TypeChecker {
   }
 
   def check(lift: Lift) = {
-    val res = new TypeInferer().visit(lift, EmptyEnv())
+    val res = new TypeInferer().visit(lift, EmptyEnvironment[TypeScheme]())
 //    println(AstPrinter.print(lift) + "\n")
     res.flatMap { case (ty, subst) => {
       val unifyed = unify(subst, EmptySubst())
@@ -236,31 +237,13 @@ case class TypeScheme(val typeVars: List[TypeVar], val ty: Type) {
   override def toString: String = s"∀(${typeVars.mkString(", ")}) . (${ty})"
 }
 
-// Identifier (as String) -> TypeScheme
-sealed trait Env {
-  def lookup(id: String): Option[TypeScheme]
-
-  def append(mapper: Map[String, TypeScheme]) = EnvCons(mapper, this)
-}
-case class EnvCons(val mapper: Map[String, TypeScheme], val next: Env) extends Env {
-  def lookup(id: String): Option[TypeScheme] = {
-    mapper.get(id) match {
-      case ts@Some(_) => ts
-      case None => next.lookup(id)
-    }
-  }
-}
-case class EmptyEnv() extends Env {
-  def lookup(id: String): Option[TypeScheme] = None
-}
-
 sealed trait Subst {
   def lookup(x: TypeVar): Type
   def lookupByValue(x: Type): Type
   def toString: String
 
   def replace(ty: Type): Type
-  def replace(env: Env): Env
+  def replace(env: Environment[TypeScheme]): Environment[TypeScheme]
   def replaceBy(from: TypeVar, to: Type): Subst
 
   def append(t1: Type, t2: Type) = {
@@ -302,15 +285,15 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
     case SizeConst(_) => ty
   }
 
-  def replace(env: Env): Env = env match {
-    case EnvCons(mapper, next) => {
-      EnvCons(mapper.mapValues(ts => ts match {
+  def replace(env: Environment[TypeScheme]): Environment[TypeScheme] = env match {
+    case ConsEnvironment(mapper, next) => {
+      ConsEnvironment(mapper.mapValues(ts => ts match {
         case TypeScheme(typeVars, ty) => {
           TypeScheme(typeVars, replace(ty))
         }
       }), replace(next))
     }
-    case EmptyEnv() => EmptyEnv()
+    case EmptyEnvironment() => EmptyEnvironment()
   }
 
   def replaceBy(from: TypeVar, to: Type): Subst = {
@@ -344,7 +327,7 @@ case class EmptySubst() extends Subst {
   override def toString: String = "\t(empty)"
 
   def replace(ty: Type): Type = ty
-  def replace(env: Env): Env = env
+  def replace(env: Environment[TypeScheme]) = env
   def replaceBy(from: TypeVar, to: Type): Subst = this
 
   def swapTypesIfValueIs(ty: Type): Subst = this

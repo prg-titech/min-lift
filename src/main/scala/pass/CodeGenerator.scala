@@ -7,7 +7,7 @@ import org.json4s.jackson.JsonMethods._
 import ast._
 import pass.MemoryAllocator._
 
-class CodeGenerator extends Visitor[Unit, String] {
+class CodeGenerator extends ExpressionVisitor[Unit, String] {
   val defaultArg = ()
 
   val chunkSize = 5
@@ -80,6 +80,7 @@ class CodeGenerator extends Visitor[Unit, String] {
         val (result, resultDecl) = generateResult(node.addressSpace, inner)
 
         s"""
+           |// view = ${node.view}
            |$prevCode
            |$resultDecl
            |{
@@ -129,6 +130,7 @@ class CodeGenerator extends Visitor[Unit, String] {
         val acc = args(0).value
 
         s"""
+           |// view = ${node.view}
            |$resultDecl
            |{
            |  ${resultType.toCL.stripSuffix("*")} $acc = $init;

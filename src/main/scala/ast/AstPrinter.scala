@@ -1,6 +1,6 @@
 package ast
 
-class AstPrinter extends Visitor[Unit, String] {
+class AstPrinter extends ExpressionVisitor[Unit, String] {
   def pad(str: String): String = {
     str.split("\n").map(l => s"  ${l}").mkString("\n")
   }

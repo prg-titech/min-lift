@@ -1,6 +1,6 @@
 package ast
 
-trait Visitor[A, R] {
+trait ExpressionVisitor[A, R] {
   type ArgumentType = A
   type ResultType = R
 

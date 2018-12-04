@@ -2,7 +2,7 @@ package pass
 
 import ast._
 
-class Normalizer extends Visitor[Unit, Expression] {
+class Normalizer extends ExpressionVisitor[Unit, Expression] {
   override def visit(node: Expression.Apply, a: Unit): ResultType = {
     node.callee match {
       // (o f g x) -> (f (g x))

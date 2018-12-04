@@ -134,30 +134,31 @@ sealed abstract class Expression {
   // FIXME: don't use var
   var ty: Type = null
   var addressSpace: Option[pass.MemoryAllocator.AddressSpace] = None
+  var view: pass.View = null
 
-  def accept[A, R](visitor: Visitor[A, R], arg: A): R
+  def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R
 }
 object Expression {
   case class Apply(val callee: Expression, val args: List[Expression]) extends Expression {
-    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+    def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R = {
       visitor.visit(this, arg)
     }
   }
 
   case class Lambda(val args: List[Identifier], val body: Expression) extends Expression {
-    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+    def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R = {
       visitor.visit(this, arg)
     }
   }
 
   case class Identifier(val value: String, val isParam: Boolean) extends Expression {
-    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+    def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R = {
       visitor.visit(this, arg)
     }
   }
 
   case class Const[U](val value: U) extends Expression {
-    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+    def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R = {
       visitor.visit(this, arg)
     }
 
@@ -169,7 +170,7 @@ object Expression {
   }
 
   case class Size(val value: Int) extends Expression {
-    def accept[A, R](visitor: Visitor[A, R], arg: A): R = {
+    def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R = {
       visitor.visit(this, arg)
     }
   }
