@@ -8,6 +8,12 @@ import structures._
 class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
   var stack = new mutable.ArrayStack[View]
 
+  var indexVarCount = 0
+  def makeIndexVar = {
+    indexVarCount += 1
+    indexVarCount
+  }
+
   def visit(node: Lift, env: ArgumentType): ResultType = {
     // val env2 = node.body.args.foldRight(env)((id, env) => env.append(id.value, MemoryView(id.value)))
     // node.body.accept(this, env2)
@@ -38,7 +44,7 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
               case "mapGlb" => "g_id"
             }
             node.args.lift(1).foreach(_.accept(this, env))
-            val res = ArrayAccessView(indexName, stack.pop())
+            val res = ArrayAccessView(makeIndexVar, stack.pop())
             node.view = res
             stack.push(res)
             node.args(0).accept(this, env)
@@ -46,7 +52,7 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
           case "mapSeq" => {
             val indexName = "i"
             node.args.lift(1).foreach(_.accept(this, env))
-            val res = ArrayAccessView(indexName, stack.pop())
+            val res = ArrayAccessView(makeIndexVar, stack.pop())
             stack.push(NullView())
             node.view = res
             stack.push(res)
@@ -55,7 +61,7 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
           case "reduceSeq" => {
             val indexName = "i"
             node.args.lift(2).foreach(_.accept(this, env))
-            val res = ArrayAccessView(indexName, stack.pop())
+            val res = ArrayAccessView(makeIndexVar, stack.pop())
             stack.push(NullView())
             node.view = res
             stack.push(res)
@@ -106,7 +112,7 @@ object ArrayAccessSolver {
 sealed abstract class View {
   def accept[A, R](visitor: ViewVisitor[A, R], arg: A): R
 }
-case class ArrayAccessView(indexName: String, child: View) extends View {
+case class ArrayAccessView(id: Int, child: View) extends View {
   override def accept[A, R](visitor: ViewVisitor[A, R], arg: A): R = visitor.visit(this, arg)
 }
 case class SplitView(size: Int, child: View) extends View {
@@ -138,55 +144,64 @@ trait ViewVisitor[A, R] {
 }
 
 class ViewConstructor extends ViewVisitor[(List[ViewExpression], List[Int]), Either[String, (List[ViewExpression], List[Int])]] {
+
   import ViewExpression._
 
-  def visit(view: ArrayAccessView, stacks: ArgumentType) = stacks match { case (arrayStack, tupleStack) =>
-    view.child.accept(this, (Variable(view.indexName) :: arrayStack, tupleStack))
+  def visit(view: ArrayAccessView, stacks: ArgumentType) = stacks match {
+    case (arrayStack, tupleStack) =>
+      view.child.accept(this, (Variable(view.id) :: arrayStack, tupleStack))
   }
 
-  def visit(view: SplitView, stacks: ArgumentType) = stacks match { case (arrayStack, tupleStack) =>
-    arrayStack match {
-      case index :: offset :: arrayStack => {
-        val expr = BinaryOp(BinaryOp(IntLiteral(view.size), Mult, index), Plus, offset)
-        view.child.accept(this, (expr :: arrayStack, tupleStack))
+  def visit(view: SplitView, stacks: ArgumentType) = stacks match {
+    case (arrayStack, tupleStack) =>
+      arrayStack match {
+        case index :: offset :: arrayStack => {
+          val expr = BinaryOp(BinaryOp(IntLiteral(view.size), Mult, index), Plus, offset)
+          view.child.accept(this, (expr :: arrayStack, tupleStack))
+        }
+        case _ => {
+          Left("Array Stack is empty.")
+        }
       }
-      case _ => {
-        Left("Array Stack is empty.")
+  }
+
+  def visit(view: MemoryView, stacks: ArgumentType) = stacks match {
+    case (arrayStack, tupleStack) =>
+      Right((ArrayVariable(view.varName) :: arrayStack, tupleStack))
+  }
+
+  def visit(view: ZipView, stacks: ArgumentType) = stacks match {
+    case (arrayStack, tupleStack) =>
+      tupleStack match {
+        case index :: tupleStack => {
+          view.children(index).accept(this, (arrayStack, tupleStack))
+        }
+        case _ => {
+          Left("Tuple Stack is empty.")
+        }
       }
-    }
   }
 
-  def visit(view: MemoryView, stacks: ArgumentType) = stacks match { case (arrayStack, tupleStack) =>
-    Right((ArrayVariable(view.varName) :: arrayStack, tupleStack))
+  def visit(view: TupleAccessView, stacks: ArgumentType) = stacks match {
+    case (arrayStack, tupleStack) =>
+      view.child.accept(this, (arrayStack, view.index :: tupleStack))
   }
 
-  def visit(view: ZipView, stacks: ArgumentType) = stacks match { case (arrayStack, tupleStack) =>
-    tupleStack match {
-      case index :: tupleStack => {
-        view.children(index).accept(this, (arrayStack, tupleStack))
-      }
-      case _ => {
-        Left("Tuple Stack is empty.")
-      }
-    }
+  def visit(view: NullView, stacks: ArgumentType) = stacks match {
+    case (arrayStack, tupleStack) =>
+      Left("Encounter NullView.")
   }
+}
 
-  def visit(view: TupleAccessView, stacks: ArgumentType) = stacks match { case (arrayStack, tupleStack) =>
-    view.child.accept(this, (arrayStack, view.index :: tupleStack))
-  }
-
-  def visit(view: NullView, stacks: ArgumentType) = stacks match { case (arrayStack, tupleStack) =>
-    Left("Encounter NullView.")
-  }
-
+object ViewConstructor {
   def construct(view: View) = {
     view.accept(new ViewConstructor, (List(), List())).flatMap{ case (arrayStack, _) =>
       arrayStack match {
-        case expr :: ArrayVariable(name) :: _ => {
+        case ViewExpression.ArrayVariable(name) :: expr :: _ => {
           Right(s"$name[$expr]")
         }
         case _ => {
-          Left("Array stack of result must have one expr and one array variable.")
+          Left(s"Array stack of result must have one expr and one array variable.\narrayStack = ${arrayStack}")
         }
       }
     }
@@ -197,8 +212,8 @@ sealed abstract class ViewExpression {
   def toString: String
 }
 object ViewExpression {
-  case class Variable(name: String) extends ViewExpression {
-    override def toString: String = name
+  case class Variable(id: Int) extends ViewExpression {
+    override def toString: String = s"i${id.toString}"
   }
   case class BinaryOp(left: ViewExpression, op: Operation, right: ViewExpression) extends ViewExpression {
     override def toString: String = s"$left $op $right"

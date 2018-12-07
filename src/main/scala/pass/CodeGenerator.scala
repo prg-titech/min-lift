@@ -21,6 +21,12 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
   }
   def currentVar = passingVarStack.last
 
+  var indexVarCount = 0
+  def mkIndexVar = {
+    indexVarCount += 1
+    s"i$indexVarCount"
+  }
+
   def visit(node: Lift, arg: ArgumentType): ResultType = {
     val Expression.Lambda(params, body) = node.body
 
@@ -79,14 +85,17 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
         val (result, resultDecl) = generateResult(node.addressSpace, inner)
 
+        val vi = mkIndexVar
+
         s"""
-           |// view = ${node.view}
+           |// view = ${node.view}, code = ${ViewConstructor.construct(node.view)}
            |$prevCode
            |$resultDecl
            |{
-           |  for (int i = 0; i < ${length.toCL}; i++) {
-           |    ${inner.toCL} ${args(0).value} = $collectionName[i];
+           |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
+           |    ${inner.toCL} ${args(0).value} = $collectionName[$vi];
            |    $result[i] = ${node.args(0).accept(this, ())};
+           |    $currentVar
            |  }
            |}
          """.stripMargin
@@ -129,13 +138,15 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
         val acc = args(0).value
 
+        val vi = mkIndexVar
+
         s"""
-           |// view = ${node.view}
+           |// view = ${node.view}, code = ${ViewConstructor.construct(node.view)}
            |$resultDecl
            |{
            |  ${resultType.toCL.stripSuffix("*")} $acc = $init;
-           |  for (int i = 0; i < ${length.toCL}; i++) {
-           |    ${inner.toCL} ${args(1).value} = ${collectionName}[i];
+           |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
+           |    ${inner.toCL} ${args(1).value} = ${ViewConstructor.construct(node.view).right.get};
            |    $acc = ${node.args(1).accept(this, ())};
            |  }
            |  $result[0] = $acc;
