@@ -38,11 +38,6 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
             stack.push(SplitView(size, stack.pop()))
           }
           case "mapLcl" | "mapWrg" | "mapGlb" => {
-            val indexName = name match {
-              case "mapLcl" => "l_id"
-              case "mapWrg" => "wg_id"
-              case "mapGlb" => "g_id"
-            }
             node.args.lift(1).foreach(_.accept(this, env))
             val res = ArrayAccessView(makeIndexVar, stack.pop())
             node.view = res
@@ -50,7 +45,6 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
             node.args(0).accept(this, env)
           }
           case "mapSeq" => {
-            val indexName = "i"
             node.args.lift(1).foreach(_.accept(this, env))
             val res = ArrayAccessView(makeIndexVar, stack.pop())
             stack.push(NullView())
@@ -59,7 +53,6 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
             node.args(0).accept(this, env)
           }
           case "reduceSeq" => {
-            val indexName = "i"
             node.args.lift(2).foreach(_.accept(this, env))
             val res = ArrayAccessView(makeIndexVar, stack.pop())
             stack.push(NullView())
@@ -74,8 +67,9 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
           case _ => {
             node.args.foreach(node => {
               node.accept(this, env)
-              node.view = stack.pop()
+              stack.pop()
             })
+            stack.push(NullView())
           }
         }
       }
