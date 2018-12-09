@@ -94,8 +94,8 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
            |{
            |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
            |    ${inner.toCL} ${args(0).value} = $collectionName[$vi];
-           |    $result[i] = ${node.args(0).accept(this, ())};
-           |    $currentVar
+           |    $result[$vi] = ${node.args(0).accept(this, ())};
+           |    // $currentVar
            |  }
            |}
          """.stripMargin
@@ -193,4 +193,6 @@ object CodeGenerator {
   def generate(node: Lift) = (new CodeGenerator).visit(node, ())
 }
 
-case class CLVariable(name: String)
+case class CLVariable(name: String) {
+  override def toString: String = name
+}
