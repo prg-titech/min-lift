@@ -6,7 +6,7 @@ import ast._
 import structures._
 
 class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
-  var stack = new mutable.ArrayStack[View]
+  val stack = new mutable.ArrayStack[View]
 
   var indexVarCount = 0
   def makeIndexVar = {
@@ -149,8 +149,16 @@ class ViewConstructor extends ViewVisitor[(List[ViewExpression], List[Int]), Eit
   def visit(view: SplitView, stacks: ArgumentType) = stacks match {
     case (arrayStack, tupleStack) =>
       arrayStack match {
-        case index :: offset :: arrayStack => {
-          val expr = BinaryOp(BinaryOp(IntLiteral(view.size), Mult, index), Plus, offset)
+        case index :: rest => {
+          val expr0 = BinaryOp(IntLiteral(view.size), Mult, index)
+          val (expr, arrayStack) = rest match {
+            case offset :: rest => {
+              (BinaryOp(expr0, Plus, offset), rest)
+            }
+            case _ => {
+              (expr0, rest)
+            }
+          }
           view.child.accept(this, (expr :: arrayStack, tupleStack))
         }
         case _ => {

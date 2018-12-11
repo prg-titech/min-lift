@@ -12,6 +12,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
   val chunkSize = 5
 
+  /*
   val passingVarStack = new mutable.MutableList[CLVariable]()
 
   var tempCount = 0
@@ -20,11 +21,34 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     passingVarStack += CLVariable(s"temp$tempCount")
   }
   def currentVar = passingVarStack.last
+  */
 
   var indexVarCount = 0
   def mkIndexVar = {
     indexVarCount += 1
     s"i$indexVarCount"
+  }
+
+  def safeAcceptAndPop(value: Option[Expression]) = {
+    val code = value.map(_.accept(this, ()))
+    (varStack.pop(), code.getOrElse(""))
+  }
+
+  val varStack = new mutable.ArrayStack[CodeVariable]
+  def currentVar = varStack.top
+
+  var tempCount = 0
+  def generateResult(addressSpace: Option[AddressSpace], ty: Type) = {
+    if (addressSpace == Some(GlobalMemory)) {
+      varStack.push(CodeVariable("result", ty))
+      ("result", "")
+    } else {
+      tempCount += 1
+      varStack.push(CodeVariable(s"temp$tempCount", ty))
+      val r = currentVar.code
+      val arrayPostfix = if (ty.isInstanceOf[Type.Scalar]) { "" } else { "[64]" }
+      (r, s"${addressSpace.getOrElse(MemoryAllocator.PrivateMemory).toCL} ${ty.toCL} $r$arrayPostfix;")
+    }
   }
 
   def visit(node: Lift, arg: ArgumentType): ResultType = {
@@ -38,7 +62,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     val resultType = body.ty.toCL.takeWhile(_ != '*') + "*";
 
     // FIXME: can use multiple input
-    passingVarStack += CLVariable(params(0).value)
+    varStack.push(CodeVariable(params(0).value, params(0).ty))
 
     val config = (
       "ChunkSize" -> chunkSize
@@ -55,37 +79,24 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     """.stripMargin
   }
 
-  def generateResult(addressSpace: Option[AddressSpace], ty: Type) = {
-    if (addressSpace == Some(GlobalMemory)) {
-      passingVarStack += CLVariable("result")
-      ("result", "")
-    } else {
-      mkTemp
-      val r = currentVar.name
-      (r, s"${addressSpace.getOrElse(MemoryAllocator.PrivateMemory).toCL} ${ty.toCL} $r[64];")
-    }
-  }
-
   override def visit(node: Expression.Apply, arg: ArgumentType): ResultType = {
     node.callee match {
       case Expression.Identifier("mapSeq", false) => {
-        val Expression.Lambda(args, _) = node.args(0)
+        val func = node.args(0)
+        val (collection, prevCode) = safeAcceptAndPop(node.args.lift(1))
 
-        var prevCode = ""
+        val Type.Array(inner, length) = node.callee.ty.asInstanceOf[Type.Arrow].nthArg(1) // collection.ty
 
-        val collectionName = node.args(1) match {
-          case Expression.Identifier(name, false) => name
-          case arg@_ => {
-            prevCode = arg.accept(this, ())
-            currentVar.name
-          }
-        }
-
-        val Type.Array(inner, length) = node.args(1).ty
-
-        val (result, resultDecl) = generateResult(node.addressSpace, inner)
+        val resultType = node.ty
+        val (result, resultDecl) = generateResult(node.addressSpace, resultType)
 
         val vi = mkIndexVar
+
+        varStack.push(CodeVariable(s"${collection.code}[$vi]", inner))
+        val funcCode = func.accept(this, ())
+        val resultCode = varStack.pop().code
+
+        varStack.push(CodeVariable(result, resultType))
 
         s"""
            |// view = ${node.view}, code = ${ViewConstructor.construct(node.view)}
@@ -93,14 +104,14 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
            |$resultDecl
            |{
            |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
-           |    ${inner.toCL} ${args(0).value} = $collectionName[$vi];
-           |    $result[$vi] = ${node.args(0).accept(this, ())};
-           |    // $currentVar
+           |    $funcCode
+           |    $result[$vi] = $resultCode;
            |  }
            |}
          """.stripMargin
       }
       case Expression.Identifier("mapGlb", false) => {
+        /*
         val Expression.Lambda(args, _) = node.args(0)
 
         var prevCode = ""
@@ -109,7 +120,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
           case Expression.Identifier(name, false) => name
           case arg@_ => {
             prevCode = arg.accept(this, ())
-            currentVar.name
+            currentVar.code
           }
         }
 
@@ -126,31 +137,48 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
            |  $result[gid] = ${node.args(0).accept(this, ())};
            |}
          """.stripMargin
+         */
+        ""
       }
       case Expression.Identifier("reduceSeq", false) => {
-        val init = node.args(0).accept(this, ())
-        val Expression.Lambda(args, body) = node.args(1)
-        val Expression.Identifier(collectionName, _) = node.args(2)
-        val Type.Array(inner, length) = node.args(2).ty
-        val resultType = node.callee.ty.asInstanceOf[Type.Arrow].lastResultType
+        val init = node.args(0)
+        val func = node.args(1)
+        var (collection, prevCode) = safeAcceptAndPop(node.args.lift(2))
 
-        val (result, resultDecl) = generateResult(node.addressSpace, inner)
+        prevCode += init.accept(this, ()) + "\n"
+        val initCode = varStack.pop()
 
-        val acc = args(0).value
+        val acc = CodeVariable("acc", init.ty)
+
+        varStack.push(acc)
+        varStack.push(CodeVariable(ViewConstructor.construct(node.view).right.get, init.ty))
+        val funcCode = func.accept(this, ())
+        val resultCode = varStack.pop().code
+
+        // val (result, resultDecl) = generateResult(node.addressSpace, acc.ty)
+
+        val Type.Array(inner, length) = node.callee.ty.asInstanceOf[Type.Arrow].nthArg(2)
+
+        // val Expression.Lambda(args, body) = node.args(1)
+        // val Expression.Identifier(collectionName, _) = node.args(2)
+//        val Type.Array(inner, length) = node.args(2).ty
+//        val resultType = node.callee.ty.asInstanceOf[Type.Arrow].lastResultType
+//
+//
+//        val acc = args(0).value
 
         val vi = mkIndexVar
 
+        varStack.push(acc)
+
         s"""
-           |// view = ${node.view}, code = ${ViewConstructor.construct(node.view)}
-           |$resultDecl
+           |$prevCode
+           |${init.ty.toCL} ${acc.code} = $initCode;
            |{
-           |  ${resultType.toCL.stripSuffix("*")} $acc = $init;
            |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
-           |    ${inner.toCL} ${args(1).value} = ${ViewConstructor.construct(node.view).right.get};
-           |    $acc = ${node.args(1).accept(this, ())};
+           |    $funcCode
+           |    ${acc.code} = $resultCode;
            |  }
-           |  $result[0] = $acc;
-           |
            |}
          """.stripMargin
       }
@@ -171,20 +199,60 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
          """.stripMargin
       }
       case Expression.Identifier("+", false) => {
+        val resultType = node.callee.ty.representativeType
+
+        val (left, prevLeft) = safeAcceptAndPop(node.args.lift(0))
+        val (right, prevRight) = safeAcceptAndPop(node.args.lift(1))
+
+        val (result, resultDecl) = generateResult(None, resultType)
+
+        // varStack.push(CodeVariable(result, resultType))
         s"""
-           |${node.args(0).accept(this, ())} + ${node.args(1).accept(this, ())}
+           |$resultDecl
+           |$prevLeft
+           |$prevRight
+           |$result = ${left.code} + ${right.code};
          """.stripMargin
       }
     }
   }
 
   override def visit(node: Expression.Lambda, arg: ArgumentType): ResultType = {
-    node.body.accept(this, ())
+    val argDecls = node.args.reverse.map(arg => {
+      val argCode = varStack.pop()
+      s"${arg.ty.toCL} ${arg.value} = $argCode;"
+    }).mkString("\n")
+
+    node.args.foreach(arg => {
+      varStack.push(CodeVariable(arg.value, arg.ty))
+    })
+
+    val bodyCode = node.body.accept(this, ())
+    val resultCode = varStack.pop()
+
+    val resultType = node.ty.representativeType
+    val (result, resultDecl) = generateResult(None, resultType)
+
+    varStack.push(CodeVariable(result, resultType))
+
+    s"""
+       |$argDecls
+       |$resultDecl
+       |$bodyCode
+       |$result = $resultCode;
+     """.stripMargin
   }
 
-  override def visit(node: Expression.Identifier, arg: ArgumentType): ResultType = node.value
+  override def visit(node: Expression.Identifier, arg: ArgumentType): ResultType = ""
 
-  override def visit[U](node: Expression.Const[U], arg: ArgumentType): ResultType = node.toCL
+  override def visit[U](node: Expression.Const[U], arg: ArgumentType): ResultType = {
+    val (result, resultDecl) = generateResult(None, node.ty)
+    varStack.push(CodeVariable(result, node.ty))
+    s"""
+       |$resultDecl
+       |$result = ${node.toCL};
+     """.stripMargin
+  }
 
   override def visit(node: Expression.Size, arg: ArgumentType): ResultType = node.value.toString
 }
@@ -195,4 +263,8 @@ object CodeGenerator {
 
 case class CLVariable(name: String) {
   override def toString: String = name
+}
+
+case class CodeVariable(code: String, typ: Type) {
+  override def toString: String = code
 }

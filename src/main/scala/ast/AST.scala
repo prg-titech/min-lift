@@ -13,6 +13,8 @@ sealed abstract class Type {
 
   def hasTypeVar(typeVar: Type.TypeVar): Boolean
   def replaceBy(from: Type.TypeVar, to: Type): Type
+
+  def representativeType = this
 }
 object Type {
   case class TypeVar(val name: String) extends Type {
@@ -30,6 +32,8 @@ object Type {
     override def toString: String = s"($argType => $resultType)"
     override def toCL: String = resultType.toCL // ?
 
+    override def representativeType: Type = lastResultType
+
     def hasTypeVar(typeVar: Type.TypeVar): Boolean = {
       argType.hasTypeVar(typeVar) || resultType.hasTypeVar(typeVar)
     }
@@ -40,6 +44,18 @@ object Type {
     def lastResultType: Type = resultType match {
       case ty@Arrow(_, _) => ty.lastResultType
       case _ => resultType
+    }
+
+    def nthArg(n: Int): Type = {
+      if (n <= 0) {
+        argType
+      }
+      else {
+        resultType match {
+          case ty@Arrow(_, _) => ty.nthArg(n - 1)
+          case _ => resultType
+        }
+      }
     }
 
     def args: List[Type] = resultType match {
