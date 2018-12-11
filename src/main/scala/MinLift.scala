@@ -19,7 +19,6 @@ object MinLift {
        _ <- Right(println(AstPrinter.print(ast)));
        ast <- Right(Normalizer.normalize(ast));
        ast <- TypeChecker.check(ast);
-       // ast <- Right(TypedNormalizer.normalize(ast));
        _ <- Right(ArrayAccessSolver.solve(ast));
        _ <- Right(println("=== typedNorm ==="));
        _ <- Right(println(AstPrinter.print(ast)));
