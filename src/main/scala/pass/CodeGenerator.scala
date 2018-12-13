@@ -182,6 +182,38 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
                |}
             """.stripMargin
           }
+          case "filterSeq" => {
+            val func = node.args(0)
+            var (collection, prevCode) = safeAcceptAndPop(node.args.lift(1))
+
+            val Type.Array(inner, length) = node.callee.ty.asInstanceOf[Type.Arrow].nthArg(1) // collection.ty
+
+            val resultType = node.ty
+
+            val vi = mkIndexVar
+
+            val input = CodeVariable(s"${collection.code}[$vi]", inner)
+
+            varStack.push(input)
+            val funcCode = func.accept(this, ())
+            val resultCode = varStack.pop().code
+
+            val (result, resultDecl) = generateResult(node.addressSpace, resultType)
+
+            s"""
+               |$prevCode
+               |$resultDecl
+               |{
+               |  int idx = 0;
+               |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
+               |    $funcCode
+               |    if ($resultCode) {
+               |      $result[idx++] =  ${input.code};
+               |    }
+               |  }
+               |}
+            """.stripMargin
+          }
           case "join" => {
             // do nothing
             ""
@@ -194,7 +226,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
           case "toLocal" => node.args(0).accept(this, ())
           case "toPrivate" => node.args(0).accept(this, ())
           // case id@(Expression.Identifier("+", false) | Expression.Identifier("*", false)) => {
-          case op@("+" | "*") => {
+          case op@("+" | "*" | "<") => {
             val resultType = node.callee.ty.representativeType
 
             val (left, prevLeft) = safeAcceptAndPop(node.args.lift(0))

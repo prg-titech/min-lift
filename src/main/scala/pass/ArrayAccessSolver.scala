@@ -60,6 +60,13 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
             stack.push(res)
             node.args(1).accept(this, env)
           }
+          case "filterSeq" => {
+            node.args.lift(1).foreach(_.accept(this, env))
+            val res = ArrayAccessView(makeIndexVar, stack.pop())
+            node.view = res
+            stack.push(res)
+            node.args(0).accept(this, env)
+          }
           case "get" => {
             val Expression.Size(index) = node.args(0)
             TupleAccessView(index, ???)

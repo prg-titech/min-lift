@@ -88,6 +88,7 @@ object Type {
   case object Float extends Scalar("float")
   case object Double extends Scalar("double")
   case object Int extends Scalar("int")
+  case object Boolean extends Scalar("bool")
 
   case class Array(val innerType: Type, val size: Type) extends Type {
     override def toCL: String = s"${innerType.toCL}*"

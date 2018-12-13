@@ -10,7 +10,7 @@ object Token {
     var line = 0
     var col = 0
 
-    val idRegex = """([a-zA-Z+\-\*\/$'])""".r
+    val idRegex = """([a-zA-Z+\-\*\/$><='])""".r
     val headOfNumRegex = """([+\-0-9])""".r
 
     def readWhile(f: Char => Boolean): String = {
