@@ -92,7 +92,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     node.callee match {
       case Expression.Identifier(id, false) => {
         id match {
-          case "mapSeq" => {
+          case "mapSeq" | "mapGlb" => {
             val func = node.args(0)
             val (collection, prevCode) = safeAcceptAndPop(node.args.lift(1))
 
@@ -101,7 +101,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
             val resultType = node.ty
             val (result, resultDecl) = generateResult(node.addressSpace, resultType)
 
-            val vi = mkIndexVar
+            val vi = if (id == "mapSeq") { mkIndexVar } else { "gid" }
 
             varStack.push(CodeVariable(s"${collection.code}[$vi]", inner))
             val funcCode = func.accept(this, ())
@@ -109,44 +109,32 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
             varStack.push(CodeVariable(result, resultType))
 
-            s"""
-               |// view = ${node.view}, code = ${ViewConstructor.construct(node.view)}
-               |$prevCode
-               |$resultDecl
-               |{
-               |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
-               |    $funcCode
-               |    $result[$vi] = $resultCode;
-               |  }
-               |}
-            """.stripMargin
-          }
-          case "mapGlb" => {
-            val Expression.Lambda(args, _) = node.args(0)
-
-            var prevCode = ""
-
-            val collectionName = node.args(1) match {
-              case Expression.Identifier(name, false) => name
-              case arg@_ => {
-                prevCode = arg.accept(this, ())
-                currentVar.code
+            id match {
+              case "mapSeq" => {
+                s"""
+                   |// view = ${node.view}, code = ${ViewConstructor.construct(node.view)}
+                   |$prevCode
+                   |$resultDecl
+                   |{
+                   |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
+                   |    $funcCode
+                   |    $result[$vi] = $resultCode;
+                   |  }
+                   |}
+                """.stripMargin
+              }
+              case "mapGlb" => {
+                s"""
+                   |$prevCode
+                   |$resultDecl
+                   |{
+                   |  int $vi = get_global_id(0);
+                   |  $funcCode
+                   |  $result[$vi] = $resultCode;
+                   |}
+                 """.stripMargin
               }
             }
-
-            val Type.Array(inner, _) = node.args(1).ty
-
-            val (result, resultDecl) = generateResult(node.addressSpace, inner)
-
-            s"""
-               |$prevCode
-               |$resultDecl
-               |{
-               |  int gid = get_global_id(0);
-               |  ${inner.toCL} ${args(0).value} = $collectionName[gid];
-               |  $result[gid] = ${node.args(0).accept(this, ())};
-               |}
-            """.stripMargin
           }
           case "reduceSeq" => {
             val init = node.args(0)
