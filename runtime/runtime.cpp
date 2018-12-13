@@ -114,13 +114,11 @@ int main(int argc, char *argv[])
     std::vector<float> raw_result(raw_xs.size());
     queue.enqueueReadBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_result.data()));
 
-    if (!quiet) {
-      std::cout << "raw_result = ";
-      for (auto v : raw_result) {
-        std::cout << v << ", ";
-      }
-      std::cout << std::endl;
+    for (auto v : raw_result) {
+      std::cout << v << std::endl;
+    }
 
+    if (!quiet) {
       cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
       cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
       std::cout << "execution time: " << static_cast<double>(end-start)*1e-3f << " us" << std::endl;
@@ -130,8 +128,7 @@ int main(int argc, char *argv[])
   } catch (cl::Error const& ex) {
     std::cerr << "OpenCL Error: " << ex.what() << " (code " << ex.err() << ")" << std::endl;
     return 1;
-  } catch (cxxopts::OptionException& e) {
-    std::cout << e.what() << std::endl;
+  } catch (std::domain_error& e) {
     std::cout << optp.help() << std::endl;
     return 1;
   } catch (std::exception const& ex) {

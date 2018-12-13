@@ -4,7 +4,7 @@ COMPILER = clang++ -std=c++11
 all: runtime profiler
 
 ext-include/cxxopts.hpp:
-	curl https://raw.githubusercontent.com/long-long-float/cxxopts/add-error-handling-with-not-providing-arg/include/cxxopts.hpp > ext-include/cxxopts.hpp
+	curl https://raw.githubusercontent.com/jarro2783/cxxopts/master/include/cxxopts.hpp > ext-include/cxxopts.hpp
 
 ext-include/json.hpp:
 	curl https://raw.githubusercontent.com/nlohmann/json/master/single_include/nlohmann/json.hpp > ext-include/json.hpp

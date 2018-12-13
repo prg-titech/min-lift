@@ -77,13 +77,28 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
       "ChunkSize" -> chunkSize
     )
 
+    val bodyCode = body.accept(this, ())
+
+    val postfixCode = varStack.top match {
+      case CodeVariable("result", _) => ""
+      case CodeVariable(name, _) => {
+        body.ty match {
+          case Type.Array(_, Type.SizeConst(1)) => {
+            s"result[0] = $name;"
+          }
+          case _ => ""
+        }
+      }
+    }
+
     s"""// ${compact(render(config))}
       |
       |kernel void KERNEL(
       |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
       |  global $resultType result,
       |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
-      |     ${body.accept(this, ())}
+      |     $bodyCode
+      |     $postfixCode
       |}
     """.stripMargin
   }
@@ -99,7 +114,6 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
             val Type.Array(inner, length) = node.callee.ty.asInstanceOf[Type.Arrow].nthArg(1) // collection.ty
 
             val resultType = node.ty
-            val (result, resultDecl) = generateResult(node.addressSpace, resultType)
 
             val vi = if (id == "mapSeq") { mkIndexVar } else { "gid" }
 
@@ -107,7 +121,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
             val funcCode = func.accept(this, ())
             val resultCode = varStack.pop().code
 
-            varStack.push(CodeVariable(result, resultType))
+            val (result, resultDecl) = generateResult(node.addressSpace, resultType)
 
             id match {
               case "mapSeq" => {
@@ -155,7 +169,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
             val vi = mkIndexVar
 
-            varStack.push(acc)
+            varStack.push(acc) // result
 
             s"""
                |$prevCode
@@ -216,8 +230,6 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     val resultType = node.ty.representativeType
     val (result, resultDecl) = generateResult(None, resultType)
 
-    varStack.push(CodeVariable(result, resultType))
-
     s"""
        |$argDecls
        |$resultDecl
@@ -230,7 +242,6 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
   override def visit[U](node: Expression.Const[U], arg: ArgumentType): ResultType = {
     val (result, resultDecl) = generateResult(None, node.ty)
-    varStack.push(CodeVariable(result, node.ty))
     s"""
        |$resultDecl
        |$result = ${node.toCL};
