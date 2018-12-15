@@ -12,17 +12,6 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
   val chunkSize = 5
 
-  /*
-  val passingVarStack = new mutable.MutableList[CLVariable]()
-
-  var tempCount = 0
-  def mkTemp: Unit = {
-    tempCount += 1
-    passingVarStack += CLVariable(s"temp$tempCount")
-  }
-  def currentVar = passingVarStack.last
-  */
-
   var indexVarCount = 0
   def mkIndexVar = {
     indexVarCount += 1
@@ -38,16 +27,28 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
   def currentVar = varStack.top
 
   var tempCount = 0
-  def generateResult(addressSpace: Option[AddressSpace], ty: Type) = {
-    if (addressSpace == Some(GlobalMemory)) {
-      varStack.push(CodeVariable("result", ty))
-      ("result", "")
+  def generateResult(addressSpace: Option[AddressSpace], ty: Type, dynamic: Boolean = false) = {
+    val global = addressSpace == Some(GlobalMemory)
+    val name = if (global) {
+      "result"
     } else {
       tempCount += 1
-      varStack.push(CodeVariable(s"temp$tempCount", ty))
-      val r = currentVar.code
+      s"temp$tempCount"
+    }
+
+    val vc = if (dynamic) {
+      CodeDynArrayVariable(name, CodeVariable(s"ary_size"))
+    } else {
+      CodeVariable(name)
+    }
+
+    varStack.push(vc)
+
+    if (global) {
+      (currentVar, "")
+    } else {
       val arrayPostfix = if (ty.isInstanceOf[Type.Scalar]) { "" } else { "[64]" }
-      (r, s"${addressSpace.getOrElse(MemoryAllocator.PrivateMemory).toCL} ${dereferenceTypeStr(ty.toCL)} $r$arrayPostfix;")
+      (currentVar, s"${addressSpace.getOrElse(MemoryAllocator.PrivateMemory).toCL} ${dereferenceTypeStr(ty.toCL)} ${currentVar.code}$arrayPostfix;")
     }
   }
 
@@ -71,7 +72,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     val resultType = body.ty.toCL.takeWhile(_ != '*') + "*";
 
     // FIXME: can use multiple input
-    varStack.push(CodeVariable(params(0).value, params(0).ty))
+    varStack.push(CodeVariable(params(0).value))
 
     val config = (
       "ChunkSize" -> chunkSize
@@ -80,8 +81,8 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     val bodyCode = body.accept(this, ())
 
     val postfixCode = varStack.top match {
-      case CodeVariable("result", _) => ""
-      case CodeVariable(name, _) => {
+      case CodeVariable("result") => ""
+      case CodeVariable(name) => {
         body.ty match {
           case Type.Array(_, Type.SizeConst(1)) => {
             s"result[0] = $name;"
@@ -97,6 +98,9 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
       |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
       |  global $resultType result,
       |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
+      |
+      |     int ary_size = 0;
+      |
       |     $bodyCode
       |     $postfixCode
       |}
@@ -117,9 +121,9 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
             val vi = if (id == "mapSeq") { mkIndexVar } else { "gid" }
 
-            varStack.push(CodeVariable(s"${collection.code}[$vi]", inner))
+            varStack.push(CodeVariable(s"${collection.code}[$vi]"))
             val funcCode = func.accept(this, ())
-            val resultCode = varStack.pop().code
+            val resultCode = varStack.pop()
 
             val (result, resultDecl) = generateResult(node.addressSpace, resultType)
 
@@ -130,9 +134,9 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
                    |$prevCode
                    |$resultDecl
                    |{
-                   |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
+                   |  for (int $vi = 0; $vi < ${collection.size(length.toCL)}; $vi++) {
                    |    $funcCode
-                   |    $result[$vi] = $resultCode;
+                   |    ${result.assign(vi, resultCode)}
                    |  }
                    |}
                 """.stripMargin
@@ -144,7 +148,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
                    |{
                    |  int $vi = get_global_id(0);
                    |  $funcCode
-                   |  $result[$vi] = $resultCode;
+                   |  ${result.assign(vi, resultCode)}
                    |}
                  """.stripMargin
               }
@@ -158,10 +162,10 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
             prevCode += init.accept(this, ()) + "\n"
             val initCode = varStack.pop()
 
-            val acc = CodeVariable("acc", init.ty)
+            val acc = CodeVariable("acc")
 
             varStack.push(acc)
-            varStack.push(CodeVariable(ViewConstructor.construct(node.view).right.get, init.ty))
+            varStack.push(CodeVariable(ViewConstructor.construct(node.view).right.get))
             val funcCode = func.accept(this, ())
             val resultCode = varStack.pop().code
 
@@ -192,13 +196,13 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
             val vi = mkIndexVar
 
-            val input = CodeVariable(s"${collection.code}[$vi]", inner)
+            val input = CodeVariable(s"${collection.code}[$vi]")
 
             varStack.push(input)
             val funcCode = func.accept(this, ())
             val resultCode = varStack.pop().code
 
-            val (result, resultDecl) = generateResult(node.addressSpace, resultType)
+            val (result, resultDecl) = generateResult(node.addressSpace, resultType, true)
 
             s"""
                |$prevCode
@@ -208,9 +212,10 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
                |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
                |    $funcCode
                |    if ($resultCode) {
-               |      $result[idx++] =  ${input.code};
+               |      ${result.assign("idx++", input)}
                |    }
                |  }
+               |  ${result.assignSize("idx")}
                |}
             """.stripMargin
           }
@@ -238,7 +243,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
                |$resultDecl
                |$prevLeft
                |$prevRight
-               |$result = ${left.code} $op ${right.code};
+               |${result.code} = ${left.code} $op ${right.code};
             """.stripMargin
           }
         }
@@ -253,7 +258,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     }).mkString("\n")
 
     node.args.foreach(arg => {
-      varStack.push(CodeVariable(arg.value, arg.ty))
+      varStack.push(CodeVariable(arg.value))
     })
 
     val bodyCode = node.body.accept(this, ())
@@ -287,10 +292,19 @@ object CodeGenerator {
   def generate(node: Lift) = (new CodeGenerator).visit(node, ())
 }
 
-case class CLVariable(name: String) {
-  override def toString: String = name
+class CodeVariable(val code: String) {
+  override def toString: String = code
+
+  def assign(idx: String, value: CodeVariable) = s"$code[$idx] = ${value.code};"
+  def assignSize(size: String) = ""
+  def size(alt: String) = alt
+}
+object CodeVariable {
+  def apply(code: String) = new CodeVariable(code)
+  def unapply(arg: CodeVariable): Option[String] = Some(arg.code)
 }
 
-case class CodeVariable(code: String, typ: Type) {
-  override def toString: String = code
+case class CodeDynArrayVariable(c: String, sizeVar: CodeVariable) extends CodeVariable(c) {
+  override def assignSize(size: String): String = s"${sizeVar.code} = $size;"
+  override def size(alt: String): String = sizeVar.toString
 }

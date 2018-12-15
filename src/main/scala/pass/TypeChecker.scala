@@ -30,7 +30,7 @@ class TypeInferer extends ExpressionVisitor[Environment[TypeScheme], Either[Stri
       ("mapSeq" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("mapGlb" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("reduceSeq" -> TypeScheme(List(a, b, c), b ->: (b ->: a ->: b) ->: Array(a, c) ->: Array(b, SizeConst(1)))),
-      ("filterSeq" -> TypeScheme(List(a, c), (a ->: Boolean) ->: Array(a, c) ->: Array(a, c))),
+      ("filterSeq" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Array(a, SizeDynamic()))),
       ("split" -> TypeScheme(List(a, b, c), a ->: Array(b, c) ->: Array(Array(b, a), SizeDivision(c, a)))),
       ("join" -> TypeScheme(List(a, b, c), Array(Array(a, b), c) ->: Array(a, SizeMultiply(b, c)))),
 //      ("toGlobal" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
@@ -286,6 +286,7 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
     case SizeDivision(dd, dr) => SizeDivision(replace(dd), replace(dr))
     case SizeMultiply(x, y)   => SizeMultiply(replace(x), replace(y))
     case SizeConst(_) => ty
+    case SizeDynamic() => ty
   }
 
   def replace(env: Environment[TypeScheme]): Environment[TypeScheme] = env match {

@@ -145,6 +145,13 @@ object Type {
       SizeMultiply(a.replaceBy(from, to), b.replaceBy(from, to))
     }
   }
+  case class SizeDynamic() extends Size {
+    override def toString: String = "dyn"
+    override def toCL: String = "dyn"
+
+    def hasTypeVar(typeVar: TypeVar): Boolean = false
+    def replaceBy(from: TypeVar, to: Type): Type = this
+  }
 }
 
 sealed abstract class Expression {
