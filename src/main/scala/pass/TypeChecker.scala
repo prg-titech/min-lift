@@ -30,9 +30,12 @@ class TypeInferer extends ExpressionVisitor[Environment[TypeScheme], Either[Stri
       ("mapSeq" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("mapGlb" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("reduceSeq" -> TypeScheme(List(a, b, c), b ->: (b ->: a ->: b) ->: Array(a, c) ->: Array(b, SizeConst(1)))),
-      ("filterSeq" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Array(a, SizeDynamic()))),
+      ("filterSeq" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Array(a, SizeDynamic(c)))),
       ("split" -> TypeScheme(List(a, b, c), a ->: Array(b, c) ->: Array(Array(b, a), SizeDivision(c, a)))),
       ("join" -> TypeScheme(List(a, b, c), Array(Array(a, b), c) ->: Array(a, SizeMultiply(b, c)))),
+      ("zip" -> TypeScheme(List(a, b, c), Array(a, c) ->: Array(b, c) ->: Array(Tuple2(a, b), c))),
+      ("get1" -> TypeScheme(List(a, b), Tuple2(a, b) ->: a)),
+      ("get2" -> TypeScheme(List(a, b), Tuple2(a, b) ->: b)),
 //      ("toGlobal" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
 //      ("toLocal" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
 //      ("toPrivate" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
@@ -196,6 +199,9 @@ object TypeChecker {
       case SubstCons(ty1@Array(it1, size1), ty2@Array(it2, size2), next) => {
         unify(next.append(it1, it2).append(size1, size2), result)
       }
+      case SubstCons(ty1@Tuple2(fst1, snd1), ty2@Tuple2(fst2, snd2), next) => {
+        unify(next.append(fst1, fst2).append(snd1, snd2), result)
+      }
       case SubstCons(ty1@SizeBinaryOperator(a1, b1), ty2@SizeBinaryOperator(a2, b2), next) => {
         unify(next.append(a1, b1).append(a2, b2), result)
       }
@@ -282,11 +288,14 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
     case Array(it, size) => {
       Array(replace(it), replace(size))
     }
+    case Tuple2(fst, snd) => {
+      Tuple2(replace(fst), replace(snd))
+    }
     case SizeVariable(_) => ty
     case SizeDivision(dd, dr) => SizeDivision(replace(dd), replace(dr))
     case SizeMultiply(x, y)   => SizeMultiply(replace(x), replace(y))
     case SizeConst(_) => ty
-    case SizeDynamic() => ty
+    case SizeDynamic(_) => ty
   }
 
   def replace(env: Environment[TypeScheme]): Environment[TypeScheme] = env match {

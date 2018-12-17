@@ -101,6 +101,18 @@ object Type {
     }
   }
 
+  case class Tuple2(fst: Type, snd: Type) extends Type {
+    override def toCL: String = s"tuple2<${fst.toCL}, ${snd.toCL}>" // ???
+
+    override def hasTypeVar(typeVar: TypeVar): Boolean = {
+      fst.hasTypeVar(typeVar) || snd.hasTypeVar(typeVar)
+    }
+
+    override def replaceBy(from: TypeVar, to: Type): Type = {
+      Tuple2(fst.replaceBy(from, to), snd.replaceBy(from, to))
+    }
+  }
+
   abstract class Size extends Type {
     override def toString: String
     override def toCL: String
@@ -145,7 +157,7 @@ object Type {
       SizeMultiply(a.replaceBy(from, to), b.replaceBy(from, to))
     }
   }
-  case class SizeDynamic() extends Size {
+  case class SizeDynamic(id: Type /* SizeVariable */) extends Size {
     override def toString: String = "dyn"
     override def toCL: String = "dyn"
 

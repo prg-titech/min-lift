@@ -19,9 +19,9 @@ class MinLiftSpec extends FunSpec {
 
   describe("Tokenizer") {
     it("should tokenize correctly") {
-
       assertResult(Right(Vector(
         LParen, Identifier("+"), IntLiteral(1), Identifier("x"), RParen)))(Token.tokenize("(+ 1 x)"))
+      assertResult(Right(Vector(Identifier("get1"))))(Token.tokenize("get1"))
       assert(Token.tokenize(code).isInstanceOf[Right[String, Vector[Token]]])
     }
 

@@ -30,7 +30,7 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
               arg.accept(this, env)
               stack.pop()
             })
-            ZipView(args)
+            stack.push(ZipView(args))
           }
           case "split" => {
             val Expression.Size(size) = node.args(0)
@@ -67,9 +67,12 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
             stack.push(res)
             node.args(0).accept(this, env)
           }
-          case "get" => {
-            val Expression.Size(index) = node.args(0)
-            TupleAccessView(index, ???)
+          case "get1" | "get2" => {
+            val index = if (name == "get1") { 0 } else { 1 }
+            node.args(0).accept(this, env)
+            val res = TupleAccessView(index, stack.pop())
+            node.view = res
+            stack.push(res)
           }
           case _ => {
             node.args.foreach(node => {

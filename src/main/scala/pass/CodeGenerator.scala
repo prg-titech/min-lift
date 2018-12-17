@@ -71,12 +71,11 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     // The result type is just a pointer.
     val resultType = body.ty.toCL.takeWhile(_ != '*') + "*";
 
-    // FIXME: can use multiple input
-    varStack.push(CodeVariable(params(0).value))
+    params.foreach(param => varStack.push(CodeVariable(param.value)))
 
-    val config = (
-      "ChunkSize" -> chunkSize
-    )
+    val config =
+      ("ChunkSize" -> chunkSize) ~
+      ("InputSize" -> node.inputTypes.size)
 
     val bodyCode = body.accept(this, ())
 
@@ -219,12 +218,12 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
                |}
             """.stripMargin
           }
-          case "join" => {
+          case "join" | "split" | "zip" => {
             // do nothing
             ""
           }
-          case "split" => {
-            // do nothing
+          case "get1" | "get2" => {
+            varStack.push(CodeVariable(ViewConstructor.construct(node.view).right.get))
             ""
           }
           case "toGlobal" => node.args(0).accept(this, ())
@@ -254,7 +253,12 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
   override def visit(node: Expression.Lambda, arg: ArgumentType): ResultType = {
     val argDecls = node.args.reverse.map(arg => {
       val argCode = varStack.pop()
-      s"${arg.ty.toCL} ${arg.value} = $argCode;"
+      if (arg.ty.isInstanceOf[Type.Tuple2]) {
+        ""
+      }
+      else {
+        s"${arg.ty.toCL} ${arg.value} = $argCode;"
+      }
     }).mkString("\n")
 
     node.args.foreach(arg => {

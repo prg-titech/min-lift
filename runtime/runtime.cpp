@@ -5,6 +5,8 @@
 #include <fstream>
 #include <cmath>
 #include <sstream>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/classification.hpp>
 
 #define CL_HPP_ENABLE_EXCEPTIONS
 #define CL_HPP_MINIMUM_OPENCL_VERSION 100
@@ -19,7 +21,7 @@ int main(int argc, char *argv[])
   cxxopts::Options optp("runtime", "A runtime of min-lift");
   optp.add_options()
     ("f,file", "Kernel file name", cxxopts::value<std::string>())
-    ("d,data", "Input data file name", cxxopts::value<std::string>())
+    ("d,data", "Input data file(s) name", cxxopts::value<std::string>())
     ("q,quiet", "Be queit", cxxopts::value<bool>()->default_value("false"))
     ("c,check", "Only checks weather kernel can be compiled", cxxopts::value<bool>()->default_value("false"));
 
@@ -86,32 +88,61 @@ int main(int argc, char *argv[])
       return 0;
     }
 
-    std::vector<float> raw_xs;
+    std::vector<std::vector<float>> raw_xses;
     {
-      std::ifstream ifs(opts["data"].as<std::string>());
-      float v;
-      while (ifs >> v) raw_xs.push_back(v);
-    }
-    const int N = raw_xs.size();
+      std::vector<std::string> pathes;
+      boost::algorithm::split(pathes, opts["data"].as<std::string>(), boost::is_any_of(","));
+      for (auto &path : pathes) {
+        raw_xses.emplace_back();
+        auto &raw_xs = raw_xses[raw_xses.size() - 1];
 
-    cl::Buffer xs(context, CL_MEM_READ_WRITE, sizeof(float) * N);
+        std::ifstream ifs(path);
+        float v;
+        while (ifs >> v) raw_xs.push_back(v);
+      }
+    }
+    const int N = raw_xses[0].size();
+
+    if (!quiet) {
+      std::cout << "input data" << std::endl;
+      int i = 0;
+      for (auto &xs : raw_xses) {
+        std::cout << "  " << i << ": ";
+        for (auto &x : xs) {
+          std::cout << x << " ";
+        }
+        std::cout << std::endl;
+        i++;
+      }
+    }
+
+    std::vector<cl::Buffer> xses;
+    for (auto &xs : raw_xses) {
+      xses.emplace_back(context, CL_MEM_READ_WRITE, sizeof(float) * N);
+    }
     cl::Buffer result(context, CL_MEM_READ_WRITE, sizeof(float) * N);
 
-    kernel.setArg(0, xs);
-    kernel.setArg(1, result);
+    int arg_i = 0;
+    for (auto &xs : xses) {
+      kernel.setArg(arg_i, xs);
+      arg_i++;
+    }
+    kernel.setArg(arg_i, result);
     cl_int cl_N = N;
-    kernel.setArg(2, sizeof(cl_N), &cl_N);
+    kernel.setArg(arg_i + 1, sizeof(cl_N), &cl_N);
 
     cl::Event event;
     cl::CommandQueue queue(context, devices[0], CL_QUEUE_PROFILING_ENABLE);
 
-    queue.enqueueWriteBuffer(xs, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_xs.data()));
+    for (int i = 0; i < raw_xses.size(); i++) {
+      queue.enqueueWriteBuffer(xses[i], CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_xses[i].data()));
+    }
 
     queue.enqueueNDRangeKernel(
         kernel, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
     event.wait();
 
-    std::vector<float> raw_result(raw_xs.size());
+    std::vector<float> raw_result(raw_xses[0].size());
     queue.enqueueReadBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_result.data()));
 
     for (auto v : raw_result) {

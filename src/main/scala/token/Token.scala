@@ -10,7 +10,8 @@ object Token {
     var line = 0
     var col = 0
 
-    val idRegex = """([a-zA-Z+\-\*\/$><='])""".r
+    val headIdRegex = """([a-zA-Z+\-\*\/$><='])""".r
+    val idRegex = """([0-9a-zA-Z+\-\*\/$><='])""".r
     val headOfNumRegex = """([+\-0-9])""".r
 
     def readWhile(f: Char => Boolean): String = {
@@ -36,7 +37,7 @@ object Token {
         case ')' => Some(RParen)
         case '[' => Some(LBracket)
         case ']' => Some(RBracket)
-        case idRegex(c) => {
+        case headIdRegex(c) => {
           index += 1
           var value = c + readWhile(c => idRegex.findPrefixOf(c.toString).isDefined)
           index -= 1
