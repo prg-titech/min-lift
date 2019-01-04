@@ -2,7 +2,10 @@
  (N)
  ((array-type float N))
  (lambda (xs)
-  ; ((toGlobal (lambda (xs) (o (mapSeq (lambda (x) (* x 2.0f))) (mapSeq (lambda (x) (+ x 3.0f))) xs)) xs)
-  (toGlobal (mapSeq (lambda (x) (* x 2.0f)) (toLocal (mapSeq (lambda (x) (+ x 3.0f)) xs))))
-  ))
+  (toGlobal
+   (o
+    (mapSeq (lambda (x) (* x 2.0f)))
+    (mapSeq (lambda (x) (+ x 2.0f)))
+    (mapSeq (lambda (x) (+ x 1.0f)))
+    xs))))
 

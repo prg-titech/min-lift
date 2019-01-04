@@ -58,7 +58,7 @@ class MinLiftSpec extends FunSpec {
     }
 
     describe("dynamic type") {
-      it("should fail with zip from different filter function") {
+      it("should fail with zip from two different filter functions") {
         val code =
           """
             |(lift
@@ -73,11 +73,30 @@ class MinLiftSpec extends FunSpec {
         println(lift)
         assert(lift.isInstanceOf[Left[String, Lift]])
       }
+
+      it("should accept with zip from two identical filter functions") {
+        val code =
+          """
+            |(lift
+            | (N)
+            | ((array-type float N))
+            | (lambda (xs)
+            |  ((lambda (ys)
+            |   ((lambda (zs)
+            |    (zip ys zs))
+            |   ys))
+            |  (filterSeq (lambda (x) true) xs))))
+          """.stripMargin
+
+        val lift = TypeChecker.check(parse(code))
+
+        // println(lift)
+        assert(lift.isInstanceOf[Right[String, Lift]])
+      }
     }
   }
 
   describe("Integration testing") {
-    println((new File("./examples")).getAbsolutePath())
     (new File("./examples")).listFiles(f => f.isFile && f.getName().endsWith(".lisp")).foreach { file =>
       it(s"should compile ${file.getName()} successfully") {
         val ret = MinLift.compile(file.getAbsolutePath())
@@ -87,7 +106,14 @@ class MinLiftSpec extends FunSpec {
   }
 
   def safeParse(code: String): Either[LiftError, Lift] = {
-    Token.tokenize(code).flatMap(tokens => Parser.parse(tokens))
+    Token.tokenize(code).flatMap(tokens => {
+      // println(tokens)
+      Parser.parse(tokens)
+    })
   }
-  def parse(code: String): Lift = safeParse(code).right.get
+  def parse(code: String): Lift = {
+    val lift = safeParse(code)
+    // println(lift)
+    lift.right.get
+  }
 }
