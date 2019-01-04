@@ -54,7 +54,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
         case Type.Scalar(_) | Type.Array(_, Type.SizeDynamicInstance(_)) => ""
         case _ => "[64]"
       }
-      (currentVar, s"$mod $id $tyStr$arrayPostfix;")
+      (currentVar, s"$mod $tyStr $id$arrayPostfix;")
     }
   }
 

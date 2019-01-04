@@ -94,7 +94,7 @@ object Type {
     override def toCL: String = {
       size match {
         case SizeDynamicInstance(_) => s"dyn_ary_${innerType.toCL}"
-        case _ => innerType.toCL
+        case _ => s"${innerType.toCL}*"
       }
     }
 
