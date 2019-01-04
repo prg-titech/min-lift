@@ -56,6 +56,24 @@ class MinLiftSpec extends FunSpec {
         .args(0).asInstanceOf[Lambda]
       assertResult(Type.Float ->: Type.Float)(lambdaOfMapSeq.ty)
     }
+
+    describe("dynamic type") {
+      it("should fail with zip from different filter function") {
+        val code =
+          """
+            |(lift
+            | (N)
+            | ((array-type float N))
+            | (lambda (xs)
+            |   (zip (filterSeq (lambda (x) true) xs) (filterSeq (lambda (x) true) xs))))
+          """.stripMargin
+
+        val lift = TypeChecker.check(parse(code))
+
+        println(lift)
+        assert(lift.isInstanceOf[Left[String, Lift]])
+      }
+    }
   }
 
   describe("Integration testing") {

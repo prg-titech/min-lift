@@ -91,7 +91,12 @@ object Type {
   case object Boolean extends Scalar("bool")
 
   case class Array(val innerType: Type, val size: Type) extends Type {
-    override def toCL: String = s"${innerType.toCL}*"
+    override def toCL: String = {
+      size match {
+        case SizeDynamicInstance(_) => s"dyn_ary_${innerType.toCL}"
+        case _ => innerType.toCL
+      }
+    }
 
     override def hasTypeVar(typeVar: TypeVar): Boolean = {
       innerType.hasTypeVar(typeVar) || size.hasTypeVar(typeVar)
@@ -157,8 +162,15 @@ object Type {
       SizeMultiply(a.replaceBy(from, to), b.replaceBy(from, to))
     }
   }
-  case class SizeDynamic(id: Type /* SizeVariable */) extends Size {
-    override def toString: String = "dyn"
+  case class SizeDynamic() extends Size {
+    override def toString: String = ???
+    override def toCL: String = ???
+
+    def hasTypeVar(typeVar: TypeVar): Boolean = ???
+    def replaceBy(from: TypeVar, to: Type): Type = ???
+  }
+  case class SizeDynamicInstance(val id: Int) extends Size {
+    override def toString: String = s"dyn#$id"
     override def toCL: String = "dyn"
 
     def hasTypeVar(typeVar: TypeVar): Boolean = false

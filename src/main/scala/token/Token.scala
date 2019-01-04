@@ -41,7 +41,13 @@ object Token {
           index += 1
           var value = c + readWhile(c => idRegex.findPrefixOf(c.toString).isDefined)
           index -= 1
-          Some(Identifier(value))
+
+          val token = value match {
+            case "true" => BooleanLiteral(true)
+            case "false" => BooleanLiteral(false)
+            case _ => Identifier(value)
+          }
+          Some(token)
         }
         case headOfNumRegex(c) => {
           index += 1
@@ -112,5 +118,6 @@ case class Identifier(val value: String) extends Token
 case class FloatLiteral(val value: Float) extends Token
 case class DoubleLiteral(val value: Double) extends Token
 case class IntLiteral(val value: Int) extends Token
+case class BooleanLiteral(val value: Boolean) extends Token
 case class SizeConstLiteral(val value: Int) extends Token
 

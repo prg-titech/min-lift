@@ -47,8 +47,14 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     if (global) {
       (currentVar, "")
     } else {
-      val arrayPostfix = if (ty.isInstanceOf[Type.Scalar]) { "" } else { "[64]" }
-      (currentVar, s"${addressSpace.getOrElse(MemoryAllocator.PrivateMemory).toCL} ${dereferenceTypeStr(ty.toCL)} ${currentVar.code}$arrayPostfix;")
+      val mod   = addressSpace.getOrElse(MemoryAllocator.PrivateMemory).toCL
+      val id    = currentVar.code
+      val tyStr = dereferenceTypeStr(ty.toCL)
+      val arrayPostfix = ty match {
+        case Type.Scalar(_) | Type.Array(_, Type.SizeDynamicInstance(_)) => ""
+        case _ => "[64]"
+      }
+      (currentVar, s"$mod $id $tyStr$arrayPostfix;")
     }
   }
 

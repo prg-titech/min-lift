@@ -5,15 +5,23 @@ import ast.Type._
 import ast.Expression._
 import structures._
 
-class TypeInferer extends ExpressionVisitor[Environment[TypeScheme], Either[String, (Type, Subst)]] {
-  // for identical typeVar
-  var varCount = 0
+class UniqueIdGenerator {
+  var count = 0
 
-  def createTypeVar() : TypeVar = {
-    val t = TypeVar(s"t${varCount}")
-    varCount += 1
+  def generateTypeVar() : TypeVar = {
+    val t = TypeVar(s"t${count}")
+    count += 1
     t
   }
+
+  def generateInt() : Int = {
+    val value = count
+    count += 1
+    value
+  }
+}
+
+class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Environment[TypeScheme], Either[String, (Type, Subst)]] {
 
   def visit(lift: Lift, _env: ArgumentType): ResultType = {
     val Lambda(args, _) = lift.body
@@ -22,20 +30,21 @@ class TypeInferer extends ExpressionVisitor[Environment[TypeScheme], Either[Stri
         id.value -> TypeScheme(List(), ty)
     }
 
-    val a = createTypeVar()
-    val b = createTypeVar()
-    val c = createTypeVar()
+    val a = idGen.generateTypeVar()
+    val b = idGen.generateTypeVar()
+    val c = idGen.generateTypeVar()
 
     var env = _env.pushEnv(Map(
       ("mapSeq" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("mapGlb" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("reduceSeq" -> TypeScheme(List(a, b, c), b ->: (b ->: a ->: b) ->: Array(a, c) ->: Array(b, SizeConst(1)))),
-      ("filterSeq" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Array(a, SizeDynamic(c)))),
+      ("filterSeq" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Array(a, SizeDynamic()))),
       ("split" -> TypeScheme(List(a, b, c), a ->: Array(b, c) ->: Array(Array(b, a), SizeDivision(c, a)))),
       ("join" -> TypeScheme(List(a, b, c), Array(Array(a, b), c) ->: Array(a, SizeMultiply(b, c)))),
       ("zip" -> TypeScheme(List(a, b, c), Array(a, c) ->: Array(b, c) ->: Array(Tuple2(a, b), c))),
       ("get1" -> TypeScheme(List(a, b), Tuple2(a, b) ->: a)),
       ("get2" -> TypeScheme(List(a, b), Tuple2(a, b) ->: b)),
+      ("id" -> TypeScheme(List(a), a ->: a)),
 //      ("toGlobal" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
 //      ("toLocal" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
 //      ("toPrivate" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
@@ -55,14 +64,14 @@ class TypeInferer extends ExpressionVisitor[Environment[TypeScheme], Either[Stri
   override def visit(lambda: Lambda, env: ArgumentType): ResultType = {
     val Lambda(args, body) = lambda
     val lambdaEnv = args.map(arg => {
-      arg.value -> TypeScheme(List(), createTypeVar())
+      arg.value -> TypeScheme(List(), idGen.generateTypeVar())
     })
 
     body.accept(this, env.pushEnv(lambdaEnv.toMap)).map { case (ty, subst) =>
       val lambdaType = lambdaEnv.foldRight(ty)((argTy, ty) => {
-        argTy._2.toType(this) ->: ty
+        argTy._2.toType(idGen) ->: ty
       })
-      lambda.args.zip(lambdaEnv).foreach { case (arg, e) => arg.ty = e._2.toType(this) }
+      lambda.args.zip(lambdaEnv).foreach { case (arg, e) => arg.ty = e._2.toType(idGen) }
       lambda.ty = lambdaType
       (lambdaType, subst)
     }
@@ -81,7 +90,7 @@ class TypeInferer extends ExpressionVisitor[Environment[TypeScheme], Either[Stri
           )
 
       args.map(args => {
-        val resultType = createTypeVar()
+        val resultType = idGen.generateTypeVar()
         val argSubst = args.foldRight(EmptySubst(): Subst)((arg, subst) =>
           subst.concat(arg._2)
         )
@@ -97,7 +106,7 @@ class TypeInferer extends ExpressionVisitor[Environment[TypeScheme], Either[Stri
   override def visit(id: Identifier, env: ArgumentType): ResultType = {
     env.lookup(id.value).toRight(s"undefined identifier ${id.value}")
         .map(ty => {
-          val idType  = ty.toType(this)
+          val idType  = ty.toType(idGen)
           id.ty = idType
           (idType, EmptySubst())
         })
@@ -109,6 +118,7 @@ class TypeInferer extends ExpressionVisitor[Environment[TypeScheme], Either[Stri
         case v:Float => Float
         case v:Double => Double
         case v:Int => Int
+        case v:Boolean => Boolean
       }
       const.ty = ty
       Right(ty, EmptySubst())
@@ -120,33 +130,33 @@ class TypeInferer extends ExpressionVisitor[Environment[TypeScheme], Either[Stri
   }
 }
 
-class TypeReplacer(val subst: Subst) extends ExpressionVisitor[Unit, Unit] {
-  def visit(node: Lift, arg: Unit): Unit = {
-    node.body.accept(this, ())
+class TypeReplacer(val subst: Subst) extends ExpressionVisitor[UniqueIdGenerator, Unit] {
+  def visit(node: Lift, arg: ArgumentType): Unit = {
+    node.body.accept(this, arg)
   }
 
-  override def visit(node: Apply, arg: Unit): Unit = {
-    node.callee.accept(this, ())
-    node.args.foreach(_.accept(this, ()))
+  override def visit(node: Apply, arg: ArgumentType): Unit = {
+    node.callee.accept(this, arg)
+    node.args.foreach(_.accept(this, arg))
 
-    node.ty = subst.replace(node.ty)
+    node.ty = subst.replace(node.ty)(arg)
   }
 
-  override def visit(node: Lambda, arg: Unit): Unit = {
-    node.args.foreach(_.accept(this, ()))
-    node.body.accept(this, ())
+  override def visit(node: Lambda, arg: ArgumentType): Unit = {
+    node.args.foreach(_.accept(this, arg))
+    node.body.accept(this, arg)
 
-    node.ty = subst.replace(node.ty)
+    node.ty = subst.replace(node.ty)(arg)
   }
 
-  override def visit(node: Identifier, arg: Unit): Unit = {
-    node.ty = subst.replace(node.ty)
+  override def visit(node: Identifier, arg: ArgumentType): Unit = {
+    node.ty = subst.replace(node.ty)(arg)
   }
 
-  override def visit[C](node: Const[C], arg: Unit): Unit = {
+  override def visit[C](node: Const[C], arg: ArgumentType): Unit = {
   }
 
-  override def visit(node: Expression.Size, arg: Unit): Unit = {
+  override def visit(node: Expression.Size, arg: ArgumentType): Unit = {
   }
 }
 
@@ -220,13 +230,16 @@ object TypeChecker {
   }
 
   def check(lift: Lift) = {
-    val res = new TypeInferer().visit(lift, EmptyEnvironment[TypeScheme]())
+    val idGen = new UniqueIdGenerator
+    val inferer = new TypeInferer(idGen)
+
+    val res = inferer.visit(lift, EmptyEnvironment[TypeScheme]())
 //    println(AstPrinter.print(lift) + "\n")
     res.flatMap { case (ty, subst) => {
       val unifyed = unify(subst, EmptySubst())
 //      println(unifyed)
       unifyed.map((unifyed) => {
-        new TypeReplacer(unifyed).visit(lift, ())
+        new TypeReplacer(unifyed).visit(lift, idGen)
         lift
       })
     }}
@@ -236,11 +249,11 @@ object TypeChecker {
 // This expresses forall(∀) and is root of type tree.
 case class TypeScheme(val typeVars: List[TypeVar], val ty: Type) {
   // create identical type
-  def toType(inferer: TypeInferer): Type = {
+  def toType(idGen: UniqueIdGenerator): Type = {
     val subst = typeVars.foldRight(EmptySubst() : Subst){ case (typeVar, subst) =>
-      SubstCons(typeVar, inferer.createTypeVar(), subst)
+      SubstCons(typeVar, idGen.generateTypeVar(), subst)
     }
-    subst.replace(ty)
+    subst.replace(ty)(idGen)
   }
 
   override def toString: String = s"∀(${typeVars.mkString(", ")}) . (${ty})"
@@ -251,8 +264,8 @@ sealed trait Subst {
   def lookupByValue(x: Type): Type
   def toString: String
 
-  def replace(ty: Type): Type
-  def replace(env: Environment[TypeScheme]): Environment[TypeScheme]
+  def replace(ty: Type)(implicit idGen: UniqueIdGenerator): Type
+  def replace(env: Environment[TypeScheme])(implicit idGen: UniqueIdGenerator): Environment[TypeScheme]
   def replaceBy(from: TypeVar, to: Type): Subst
 
   def append(t1: Type, t2: Type) = {
@@ -268,7 +281,7 @@ sealed trait Subst {
 
 // Type -> Type
 case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst {
-  def replace(ty: Type): Type = ty match {
+  def replace(ty: Type)(implicit idGen: UniqueIdGenerator): Type = ty match {
     case tv@TypeVar(name) => {
       val u = lookup(tv)
       if (tv == u) {
@@ -295,10 +308,11 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
     case SizeDivision(dd, dr) => SizeDivision(replace(dd), replace(dr))
     case SizeMultiply(x, y)   => SizeMultiply(replace(x), replace(y))
     case SizeConst(_) => ty
-    case SizeDynamic(_) => ty
+    case SizeDynamic() => SizeDynamicInstance(idGen.generateInt())
+    case SizeDynamicInstance(_) => ty
   }
 
-  def replace(env: Environment[TypeScheme]): Environment[TypeScheme] = env match {
+  def replace(env: Environment[TypeScheme])(implicit idGen: UniqueIdGenerator): Environment[TypeScheme] = env match {
     case ConsEnvironment(mapper, next) => {
       ConsEnvironment(mapper.mapValues(ts => ts match {
         case TypeScheme(typeVars, ty) => {
@@ -339,8 +353,8 @@ case class EmptySubst() extends Subst {
   def lookupByValue(x: Type): Type = x
   override def toString: String = "\t(empty)"
 
-  def replace(ty: Type): Type = ty
-  def replace(env: Environment[TypeScheme]) = env
+  def replace(ty: Type)(implicit idGen: UniqueIdGenerator): Type = ty
+  def replace(env: Environment[TypeScheme])(implicit idGen: UniqueIdGenerator) = env
   def replaceBy(from: TypeVar, to: Type): Subst = this
 
   def swapTypesIfValueIs(ty: Type): Subst = this
