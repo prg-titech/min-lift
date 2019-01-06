@@ -93,7 +93,7 @@ object Type {
   case class Array(val innerType: Type, val size: Type) extends Type {
     override def toCL: String = {
       size match {
-        case SizeDynamicInstance(_) => s"dyn_ary_${innerType.toCL}"
+        // case SizeDynamicInstance(_) => s"dyn_ary_${innerType.toCL}"
         case _ => s"${innerType.toCL}*"
       }
     }

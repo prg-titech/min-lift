@@ -122,14 +122,17 @@ int main(int argc, char *argv[])
     }
     cl::Buffer result(context, CL_MEM_READ_WRITE, sizeof(float) * N);
 
+    cl::Buffer result_size(context, CL_MEM_READ_WRITE, sizeof(int));
+
     int arg_i = 0;
     for (auto &xs : xses) {
       kernel.setArg(arg_i, xs);
       arg_i++;
     }
-    kernel.setArg(arg_i, result);
+    kernel.setArg(arg_i++, result);
+    kernel.setArg(arg_i++, result_size);
     cl_int cl_N = N;
-    kernel.setArg(arg_i + 1, sizeof(cl_N), &cl_N);
+    kernel.setArg(arg_i, sizeof(cl_N), &cl_N);
 
     cl::Event event;
     cl::CommandQueue queue(context, devices[0], CL_QUEUE_PROFILING_ENABLE);
@@ -145,6 +148,12 @@ int main(int argc, char *argv[])
     std::vector<float> raw_result(raw_xses[0].size());
     queue.enqueueReadBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_result.data()));
 
+    int raw_result_size = 0;
+    queue.enqueueReadBuffer(result_size, CL_TRUE, 0, sizeof(int), reinterpret_cast<void*>(&raw_result_size));
+
+    if (!quiet) {
+      std::cout << "result size: " << raw_result_size << std::endl;
+    }
     for (auto v : raw_result) {
       std::cout << v << std::endl;
     }

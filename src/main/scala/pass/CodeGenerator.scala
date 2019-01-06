@@ -1,9 +1,10 @@
 package pass
 
+import ast.Type.SizeDynamicInstance
+
 import scala.collection._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
-
 import ast._
 import pass.MemoryAllocator._
 
@@ -51,7 +52,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
       val id    = currentVar.code
       val tyStr = dereferenceTypeStr(ty.toCL)
       val arrayPostfix = ty match {
-        case Type.Scalar(_) | Type.Array(_, Type.SizeDynamicInstance(_)) => ""
+        case Type.Scalar(_)/* | Type.Array(_, Type.SizeDynamicInstance(_))*/ => ""
         case _ => "[64]"
       }
       (currentVar, s"$mod $tyStr $id$arrayPostfix;")
@@ -85,7 +86,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
     val bodyCode = body.accept(this, ())
 
-    val postfixCode = varStack.top match {
+    val postfixCode = (varStack.top match {
       case CodeVariable("result") => ""
       case CodeVariable(name) => {
         body.ty match {
@@ -95,13 +96,24 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
           case _ => ""
         }
       }
-    }
+    }) + "\n" + (body.ty match {
+      case Type.Array(_, SizeDynamicInstance(_)) => {
+        "*result_size = ary_size;"
+      }
+      case Type.Array(_, size) => {
+        s"*result_size = ${size.toCL};"
+      }
+      case _ => {
+        "*result_size = 1;"
+      }
+    })
 
     s"""// ${compact(render(config))}
       |
       |kernel void KERNEL(
       |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
       |  global $resultType result,
+      |  global int* result_size,
       |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
       |
       |     int ary_size = 0;
