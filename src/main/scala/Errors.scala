@@ -12,3 +12,6 @@ case class LexerError(val message: String, val position: Position) extends LiftE
 case class ParseError(val message: String, val position: Position) extends LiftError {
   override def toString: String = s"$message at $position"
 }
+case class PreprocessError(val message: String /*, val position: Position*/) extends LiftError {
+  override def toString: String = s"$message"
+}
