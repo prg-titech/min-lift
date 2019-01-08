@@ -55,6 +55,7 @@ int main(int argc, char *argv[])
     }
     auto config = nlohmann::json::parse(config_json);
     const int CHUNK_SIZE = config["ChunkSize"].get<int>();
+    const bool use_filter_global = config["UseFilterGlobal"].get<bool>();
 
     cl_context_properties properties[] = {
       CL_CONTEXT_PLATFORM, (cl_context_properties)(platforms[0])(), 0
@@ -81,8 +82,6 @@ int main(int argc, char *argv[])
         throw ex;
       }
     }
-
-    cl::Kernel kernel(program, "KERNEL");
 
     if (opts.count("check")) {
       return 0;
@@ -124,16 +123,6 @@ int main(int argc, char *argv[])
 
     cl::Buffer result_size(context, CL_MEM_READ_WRITE, sizeof(int));
 
-    int arg_i = 0;
-    for (auto &xs : xses) {
-      kernel.setArg(arg_i, xs);
-      arg_i++;
-    }
-    kernel.setArg(arg_i++, result);
-    kernel.setArg(arg_i++, result_size);
-    cl_int cl_N = N;
-    kernel.setArg(arg_i, sizeof(cl_N), &cl_N);
-
     cl::Event event;
     cl::CommandQueue queue(context, devices[0], CL_QUEUE_PROFILING_ENABLE);
 
@@ -141,9 +130,89 @@ int main(int argc, char *argv[])
       queue.enqueueWriteBuffer(xses[i], CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_xses[i].data()));
     }
 
-    queue.enqueueNDRangeKernel(
-        kernel, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
-    event.wait();
+    if (use_filter_global) {
+      cl::Kernel kernel(program, "KERNEL");
+      cl::Kernel kernel2(program, "KERNEL2");
+      cl::Kernel prefix_sum(program, "prefix_sum");
+
+      const cl::size_type bitmap_size = sizeof(int) * N;
+      cl::Buffer bitmap(context, CL_MEM_READ_WRITE, bitmap_size);
+      cl::Buffer bitmap_dup(context, CL_MEM_READ_WRITE, bitmap_size);
+
+      cl::Buffer indices(context, CL_MEM_READ_WRITE, bitmap_size);
+
+      {
+        int arg_i = 0;
+        for (auto &xs : xses) {
+          kernel.setArg(arg_i, xs);
+          arg_i++;
+        }
+        kernel.setArg(arg_i++, result);
+        kernel.setArg(arg_i++, result_size);
+        kernel.setArg(arg_i++, bitmap);
+        cl_int cl_N = N;
+        kernel.setArg(arg_i, sizeof(cl_N), &cl_N);
+
+        queue.enqueueNDRangeKernel(
+            kernel, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
+        event.wait();
+      }
+
+      {
+        queue.enqueueCopyBuffer(bitmap, bitmap_dup, 0, 0, bitmap_size);
+
+        // FIXME: also supports dynamic size
+        const int steps = std::ceil(std::log2((float)N));
+        for (cl_int i = 0; i < steps; i++) {
+          int arg_i = 0;
+          prefix_sum.setArg(arg_i++, bitmap_dup);
+          prefix_sum.setArg(arg_i++, indices);
+          prefix_sum.setArg(arg_i++, i);
+
+          queue.enqueueNDRangeKernel(
+              prefix_sum, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
+          event.wait();
+        }
+        if (steps % 2 == 0) {
+          queue.enqueueCopyBuffer(bitmap_dup, indices, 0, 0, bitmap_size);
+        }
+      }
+
+      {
+        int arg_i = 0;
+        for (auto &xs : xses) {
+          kernel2.setArg(arg_i, xs);
+          arg_i++;
+        }
+        kernel2.setArg(arg_i++, result);
+        kernel2.setArg(arg_i++, result_size);
+        kernel2.setArg(arg_i++, bitmap);
+        kernel2.setArg(arg_i++, indices);
+        cl_int cl_N = N;
+        kernel2.setArg(arg_i, sizeof(cl_N), &cl_N);
+
+        queue.enqueueNDRangeKernel(
+            kernel2, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
+        event.wait();
+      }
+    }
+    else {
+      cl::Kernel kernel(program, "KERNEL");
+
+      int arg_i = 0;
+      for (auto &xs : xses) {
+        kernel.setArg(arg_i, xs);
+        arg_i++;
+      }
+      kernel.setArg(arg_i++, result);
+      kernel.setArg(arg_i++, result_size);
+      cl_int cl_N = N;
+      kernel.setArg(arg_i, sizeof(cl_N), &cl_N);
+
+      queue.enqueueNDRangeKernel(
+          kernel, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
+      event.wait();
+    }
 
     std::vector<float> raw_result(raw_xses[0].size());
     queue.enqueueReadBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_result.data()));

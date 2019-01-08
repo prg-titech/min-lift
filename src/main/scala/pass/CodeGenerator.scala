@@ -9,11 +9,40 @@ import ast._
 import pass.MemoryAllocator._
 
 class CodeGenerator extends ExpressionVisitor[Unit, String] {
-  val defaultArg = ()
-
   val chunkSize = 5
 
   var indexVarCount = 0
+
+  val varStack = new mutable.ArrayStack[CodeVariable]
+  def currentVar = varStack.top
+
+  var tempCount = 0
+
+  var splitKernel = false
+
+  val prefixSumKernel =
+    """
+      |kernel void prefix_sum(global int *xs, global int *ys, int i) {
+      |  global int *in = NULL, *out = NULL;
+      |  if (i % 2 == 0) {
+      |    in = xs; out = ys;
+      |  }
+      |  else {
+      |    in = ys; out = xs;
+      |  }
+      |
+      |  int j = get_global_id(0);
+      |
+      |  int powiof2 = pown(2.0f, i);
+      |  if (j < powiof2) {
+      |    out[j] = in[j];
+      |  }
+      |  else {
+      |    out[j] = in[j] + in[j - powiof2];
+      |  }
+      |}
+    """.stripMargin
+
   def mkIndexVar = {
     indexVarCount += 1
     s"i$indexVarCount"
@@ -24,10 +53,6 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     (varStack.pop(), code.getOrElse(""))
   }
 
-  val varStack = new mutable.ArrayStack[CodeVariable]
-  def currentVar = varStack.top
-
-  var tempCount = 0
   def generateResult(addressSpace: Option[AddressSpace], ty: Type, dynamic: Boolean = false) = {
     val global = addressSpace == Some(GlobalMemory)
     val name = if (global) {
@@ -80,10 +105,6 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
     params.foreach(param => varStack.push(CodeVariable(param.value)))
 
-    val config =
-      ("ChunkSize" -> chunkSize) ~
-      ("InputSize" -> node.inputTypes.size)
-
     val bodyCode = body.accept(this, ())
 
     val postfixCode = (varStack.top match {
@@ -108,20 +129,60 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
       }
     })
 
-    s"""// ${compact(render(config))}
-      |
-      |kernel void KERNEL(
-      |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
-      |  global $resultType result,
-      |  global int* result_size,
-      |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
-      |
-      |     int ary_size = 0;
-      |
-      |     $bodyCode
-      |     $postfixCode
-      |}
-    """.stripMargin
+    val config =
+        ("ChunkSize" -> chunkSize) ~
+        ("InputSize" -> node.inputTypes.size) ~
+        ("UseFilterGlobal" -> splitKernel)
+
+    if (splitKernel) {
+      val codeChunks = bodyCode.split("// ---", 2)
+
+      s"""// ${compact(render(config))}
+        |
+        |kernel void KERNEL(
+        |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
+        |  global $resultType result,
+        |  global int* result_size,
+        |  global int* bitmap,
+        |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
+        |     int ary_size = 0;
+        |
+        |     ${codeChunks(0)}
+        |}
+        |
+        |kernel void KERNEL2(
+        |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
+        |  global $resultType result,
+        |  global int* result_size,
+        |  global int* bitmap,
+        |  global int* indices,
+        |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
+        |     int ary_size = 0;
+        |     ${codeChunks(1)}
+        |     $postfixCode
+        |}
+        |
+        |$prefixSumKernel
+      """.stripMargin
+    }
+    else {
+      s"""// ${compact(render(config))}
+        |
+        |kernel void KERNEL(
+        |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
+        |  global $resultType result,
+        |  global int* result_size,
+        |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
+        |
+        |     int ary_size = 0;
+        |
+        |     $bodyCode
+        |     $postfixCode
+        |}
+        |
+        |$prefixSumKernel
+      """.stripMargin
+    }
   }
 
   override def visit(node: Expression.Apply, arg: ArgumentType): ResultType = {
@@ -235,6 +296,41 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
                |  ${result.assignSize("idx")}
                |}
             """.stripMargin
+          }
+          case "filterGlb" => {
+
+            splitKernel = true
+
+            val func = node.args(0)
+            var (collection, prevCode) = safeAcceptAndPop(node.args.lift(1))
+
+            val Type.Array(inner, length) = node.callee.ty.asInstanceOf[Type.Arrow].nthArg(1) // collection.ty
+
+            val vi = mkIndexVar
+
+            val input = CodeVariable(s"${collection.code}[$vi]")
+
+            varStack.push(input)
+            val funcCode = func.accept(this, ())
+            val resultCode = varStack.pop().code
+
+            val resultType = node.ty
+
+            val (result, resultDecl) = generateResult(node.addressSpace, resultType, true)
+
+            s"""
+               |int $vi = get_global_id(0);
+               |$funcCode
+               |bitmap[$vi] = $resultCode;
+               |
+               |// ---
+               |
+               |int $vi = get_global_id(0);
+               |if (bitmap[$vi]) {
+               |  ${result.assign(s"indices[$vi] - 1", input)}
+               |}
+               |${result.assignSize(s"indices[${length.toCL} - 1]")}
+             """.stripMargin
           }
           case "join" | "split" | "zip" => {
             // do nothing

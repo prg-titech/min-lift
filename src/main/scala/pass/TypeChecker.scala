@@ -39,6 +39,7 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
       ("mapGlb" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("reduceSeq" -> TypeScheme(List(a, b, c), b ->: (b ->: a ->: b) ->: Array(a, c) ->: Array(b, SizeConst(1)))),
       ("filterSeq" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Array(a, SizeDynamic()))),
+      ("filterGlb" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Array(a, SizeDynamic()))),
       ("split" -> TypeScheme(List(a, b, c), a ->: Array(b, c) ->: Array(Array(b, a), SizeDivision(c, a)))),
       ("join" -> TypeScheme(List(a, b, c), Array(Array(a, b), c) ->: Array(a, SizeMultiply(b, c)))),
       ("zip" -> TypeScheme(List(a, b, c), Array(a, c) ->: Array(b, c) ->: Array(Tuple2(a, b), c))),
