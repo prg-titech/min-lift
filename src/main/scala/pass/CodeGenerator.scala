@@ -179,8 +179,6 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
         |     $bodyCode
         |     $postfixCode
         |}
-        |
-        |$prefixSumKernel
       """.stripMargin
     }
   }
@@ -189,7 +187,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     node.callee match {
       case Expression.Identifier(id, false) => {
         id match {
-          case "mapSeq" | "mapGlb" => {
+          case "mapSeq" | "mapGlb" | "mapWrg" | "mapLcl" => {
             val func = node.args(0)
             val (collection, prevCode) = safeAcceptAndPop(node.args.lift(1))
 
@@ -197,9 +195,11 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
             val resultType = node.ty
 
-            val vi = if (id == "mapSeq") { mkIndexVar } else { "gid" }
+            // val vi = if (id == "mapSeq") { mkIndexVar } else { "gid" }
+            val vi = mkIndexVar
 
-            varStack.push(CodeVariable(s"${collection.code}[$vi]"))
+            val index = ViewConstructor.construct(node.view).right.get
+            varStack.push(CodeVariable(index))
             val funcCode = func.accept(this, ())
             val resultCode = varStack.pop()
 
@@ -225,6 +225,30 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
                    |$resultDecl
                    |{
                    |  int $vi = get_global_id(0);
+                   |  $funcCode
+                   |  ${result.assign(vi, resultCode)}
+                   |}
+                 """.stripMargin
+              }
+              case "mapWrg" => {
+                s"""
+                   |// view = ${node.view}, code = ${ViewConstructor.construct(node.view)}
+                   |$prevCode
+                   |$resultDecl
+                   |{
+                   |  int $vi = get_group_id(0);
+                   |  $funcCode
+                   |  // ${result.assign(vi, resultCode)}
+                   |}
+                 """.stripMargin
+              }
+              case "mapLcl" => {
+                s"""
+                   |// view = ${node.view}, code = ${ViewConstructor.construct(node.view)}
+                   |$prevCode
+                   |$resultDecl
+                   |{
+                   |  int $vi = get_local_id(0);
                    |  $funcCode
                    |  ${result.assign(vi, resultCode)}
                    |}
@@ -332,7 +356,10 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
                |${result.assignSize(s"indices[${length.toCL} - 1]")}
              """.stripMargin
           }
-          case "join" | "split" | "zip" => {
+          case "join" => {
+            node.args(0).accept(this, ())
+          }
+          case "split" | "zip" => {
             // do nothing
             ""
           }

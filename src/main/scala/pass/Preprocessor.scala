@@ -8,7 +8,6 @@ class Preprocessor extends ExpressionVisitor[Unit, Either[LiftError, Expression]
     node.callee match {
       // (o f g h ... x) -> (f (g (h ... x)))
       case Expression.Identifier("o", false) => {
-
         if (node.args.length < 1) {
           Left(PreprocessError("composition 'o' needs at least one argument"))
         }
