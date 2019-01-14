@@ -57,7 +57,21 @@ class MinLiftSpec extends FunSpec {
       assertResult(Type.Float ->: Type.Float)(lambdaOfMapSeq.ty)
     }
 
-    describe("dynamic type") {
+    describe("existential type") {
+      it("should fail with map from fitler") {
+        val code =
+          """
+            |(lift
+            | (N)
+            | ((array-type float N))
+            | (lambda (xs)
+            |   (map (filterSeq (lambda (x) true) xs))))
+          """.stripMargin
+
+        val lift = TypeChecker.check(parse(code))
+
+        assert(lift.isInstanceOf[Left[String, Lift]])
+      }
       it("should fail with zip from two different filter functions") {
         val code =
           """
@@ -65,7 +79,9 @@ class MinLiftSpec extends FunSpec {
             | (N)
             | ((array-type float N))
             | (lambda (xs)
-            |   (zip (filterSeq (lambda (x) true) xs) (filterSeq (lambda (x) true) xs))))
+            |   (unpack xs1 (filterSeq (lambda (x) true) xs)
+            |     (unpack xs2 (filterSeq (lambda (x) true) xs)
+            |       (zip xs1 xs2)))))
           """.stripMargin
 
         val lift = TypeChecker.check(parse(code))
@@ -81,11 +97,9 @@ class MinLiftSpec extends FunSpec {
             | (N)
             | ((array-type float N))
             | (lambda (xs)
-            |  ((lambda (ys)
-            |   ((lambda (zs)
-            |    (zip ys zs))
-            |   ys))
-            |  (filterSeq (lambda (x) true) xs))))
+            |  (unpack ys (filterSeq (lambda (x) true) xs)
+            |   (let zs ys
+            |    (zip ys zs)))))
           """.stripMargin
 
         val lift = TypeChecker.check(parse(code))

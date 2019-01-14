@@ -58,7 +58,7 @@ class Parser(val tokens: Vector[Token]) {
 
   def parseExpression(): Either[ErrType, Expression] = {
     val expr = tokens(pos) match {
-      case LParen => parseApply()
+      case LParen => parseApplyAndSpecial()
       case cur@_ => {
         val expr = cur match {
           case Identifier(value) => Right(Expression.Identifier(value, false))
@@ -76,30 +76,48 @@ class Parser(val tokens: Vector[Token]) {
     expr
   }
 
-  def parseApply(): Either[ErrType, Expression] = {
+  def parseApplyAndSpecial(): Either[ErrType, Expression] = {
     consume(LParen).flatMap(_ => {
       tokens(pos) match {
-        case Identifier("lambda") => {
-          for (
-            _ <- consume(Identifier("lambda"));
-            args <- parseList(parseParam);
-            body <- parseExpression();
-            _ <- consume(RParen)
-          ) yield {
-            Expression.Lambda(args.toList, body)
+        case Identifier(fstId) => {
+          fstId match {
+            case "lambda" => {
+              for (
+                _ <- consume(Identifier("lambda"));
+                args <- parseList(parseParam);
+                body <- parseExpression();
+                _ <- consume(RParen)
+              ) yield {
+                Expression.Lambda(args.toList, body)
+              }
+            }
+            case "let" | "unpack" => {
+              for (
+                _ <- consume(Identifier(fstId));
+                id <- parseIdentifier();
+                value <- parseExpression();
+                body <- parseExpression();
+                _ <- consume(RParen)
+              ) yield {
+                Expression.Let(id, value, body, fstId == "unpack")
+              }
+            }
+            case _ => parseApply()
           }
         }
-        case _ => {
-          for (
-            callee <- parseExpression();
-            args <- _while(true, tok => tok != RParen, _ => parseExpression());
-            _ <- consume(RParen)
-          ) yield {
-            Expression.Apply(callee, args.toList)
-          }
-        }
+        case _ => parseApply()
       }
     })
+  }
+
+  def parseApply(): Either[ErrType, Expression.Apply] = {
+    for (
+      callee <- parseExpression();
+      args <- _while(true, tok => tok != RParen, _ => parseExpression());
+      _ <- consume(RParen)
+    ) yield {
+      Expression.Apply(callee, args.toList)
+    }
   }
 
   def parseIdentifier(): Either[ErrType, Expression.Identifier] = {

@@ -40,8 +40,8 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
       ("mapWrg" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("mapLcl" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("reduceSeq" -> TypeScheme(List(a, b, c), b ->: (b ->: a ->: b) ->: Array(a, c) ->: Array(b, SizeConst(1)))),
-      ("filterSeq" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Array(a, SizeDynamic()))),
-      ("filterGlb" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Array(a, SizeDynamic()))),
+      ("filterSeq" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Existential(c, Array(a, c)))),
+      ("filterGlb" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Existential(c, Array(a, c)))),
       ("split" -> TypeScheme(List(a, b, c), a ->: Array(b, c) ->: Array(Array(b, a), SizeDivision(c, a)))),
       ("join" -> TypeScheme(List(a, b, c), Array(Array(a, b), c) ->: Array(a, SizeMultiply(b, c)))),
       ("zip" -> TypeScheme(List(a, b, c), Array(a, c) ->: Array(b, c) ->: Array(Tuple2(a, b), c))),
@@ -209,14 +209,17 @@ object TypeChecker {
           Left(s"$ty1 and $ty2: unsolvable constraints")
         }
       }
-      case SubstCons(ty1@Array(it1, size1), ty2@Array(it2, size2), next) => {
+      case SubstCons(Array(it1, size1), Array(it2, size2), next) => {
         unify(next.append(it1, it2).append(size1, size2), result)
       }
-      case SubstCons(ty1@Tuple2(fst1, snd1), ty2@Tuple2(fst2, snd2), next) => {
+      case SubstCons(Tuple2(fst1, snd1), Tuple2(fst2, snd2), next) => {
         unify(next.append(fst1, fst2).append(snd1, snd2), result)
       }
-      case SubstCons(ty1@SizeBinaryOperator(a1, b1), ty2@SizeBinaryOperator(a2, b2), next) => {
+      case SubstCons(SizeBinaryOperator(a1, b1), SizeBinaryOperator(a2, b2), next) => {
         unify(next.append(a1, b1).append(a2, b2), result)
+      }
+      case SubstCons(Existential(tv1, ty1), Existential(tv2, ty2), next) => {
+        unify(next.append(tv1, tv2).append(ty1, ty2), result)
       }
       case SubstCons(ty1, ty2, next) => {
         if (ty1 == ty2) {
@@ -237,10 +240,10 @@ object TypeChecker {
     val inferer = new TypeInferer(idGen)
 
     val res = inferer.visit(lift, EmptyEnvironment[TypeScheme]())
-//    println(AstPrinter.print(lift) + "\n")
+    // println(AstPrinter.print(lift))
     res.flatMap { case (ty, subst) => {
       val unifyed = unify(subst, EmptySubst())
-//      println(unifyed)
+      // println(subst, "\n", unifyed)
       unifyed.map((unifyed) => {
         new TypeReplacer(unifyed).visit(lift, idGen)
         lift
@@ -313,6 +316,7 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
     case SizeConst(_) => ty
     case SizeDynamic() => SizeDynamicInstance(idGen.generateInt())
     case SizeDynamicInstance(_) => ty
+    case Existential(tv, ty) => Existential(tv, replace(ty))
   }
 
   def replace(env: Environment[TypeScheme])(implicit idGen: UniqueIdGenerator): Environment[TypeScheme] = env match {

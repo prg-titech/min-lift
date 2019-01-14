@@ -176,6 +176,12 @@ object Type {
     def hasTypeVar(typeVar: TypeVar): Boolean = false
     def replaceBy(from: TypeVar, to: Type): Type = this
   }
+
+  case class Existential(typeVar: TypeVar, ty: Type) extends Type {
+    override def toCL: String = ???
+    override def hasTypeVar(tv: TypeVar): Boolean = typeVar.hasTypeVar(tv)
+    override def replaceBy(from: TypeVar, to: Type): Type = Existential(typeVar, ty.replaceBy(from, to))
+  }
 }
 
 sealed abstract class Expression {
@@ -197,6 +203,10 @@ object Expression {
     def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R = {
       visitor.visit(this, arg)
     }
+  }
+
+  case class Let(val id: Identifier, val value: Expression, val body: Expression, val unpack: Boolean) extends Expression {
+    def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R = ???
   }
 
   case class Identifier(val value: String, val isParam: Boolean) extends Expression {
