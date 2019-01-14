@@ -195,10 +195,9 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
             val resultType = node.ty
 
-            // val vi = if (id == "mapSeq") { mkIndexVar } else { "gid" }
             val vi = mkIndexVar
 
-            val index = ViewConstructor.construct(node.view).right.get
+            val index = ViewConstructor.construct(node.view).getOrElse(s"${collection.code}[$vi]")
             varStack.push(CodeVariable(index))
             val funcCode = func.accept(this, ())
             val resultCode = varStack.pop()

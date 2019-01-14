@@ -37,17 +37,9 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
             node.args.lift(1).foreach(_.accept(this, env))
             stack.push(SplitView(size, stack.pop()))
           }
-          case "mapLcl" | "mapWrg" | "mapGlb" => {
+          case "mapSeq" | "mapLcl" | "mapWrg" | "mapGlb" => {
             node.args.lift(1).foreach(_.accept(this, env))
             val res = ArrayAccessView(makeIndexVar, stack.pop())
-            node.view = res
-            stack.push(res)
-            node.args(0).accept(this, env)
-          }
-          case "mapSeq" => {
-            node.args.lift(1).foreach(_.accept(this, env))
-            val res = ArrayAccessView(makeIndexVar, stack.pop())
-            stack.push(NullView())
             node.view = res
             stack.push(res)
             node.args(0).accept(this, env)
