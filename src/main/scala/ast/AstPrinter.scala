@@ -5,6 +5,10 @@ class AstPrinter extends ExpressionVisitor[Unit, String] {
     str.split("\n").map(l => s"  ${l}").mkString("\n")
   }
 
+  def postfix(node: Expression) = {
+    s"${node.ty}@${node.addressSpace}"
+  }
+
   def visit(node: Lift, a: Unit): String = {
     s"""
        |(lift
@@ -15,25 +19,32 @@ class AstPrinter extends ExpressionVisitor[Unit, String] {
   override def visit(node: Expression.Apply, a: Unit): String = {
     val args = node.args.map(_.accept(this, ())).mkString("\n")
     s"""
-       |(${node.callee.accept(this, ())}\n${pad(args)}):${node.ty}@${node.addressSpace}""".stripMargin
+       |(${node.callee.accept(this, ())}\n${pad(args)}):${postfix(node)}""".stripMargin
   }
 
   override def visit(node: Expression.Lambda, a: Unit): String = {
     s"""
        |(lambda
-       |  (${node.args.map(_.accept(this, ())).mkString("\n")})${pad(node.body.accept(this, ()))}):${node.ty}@${node.addressSpace}""".stripMargin
+       |  (${node.args.map(_.accept(this, ())).mkString("\n")})${pad(node.body.accept(this, ()))}):${postfix(node)}""".stripMargin
+  }
+
+  override def visit(node: Expression.Let, a: Unit): String = {
+    s"""
+       |(let ${node.id} ${node.value.accept(this, ())}
+       |  ${node.body.accept(this, ())}):${postfix(node)}
+     """
   }
 
   override def visit(node: Expression.Identifier, a: Unit): String = {
-    s"${node.value}:${node.ty}@${node.addressSpace}"
+    s"${node.value}:${postfix(node)}"
   }
 
   override def visit[C](node: Expression.Const[C], a: Unit): String = {
-    s"${node.value}:${node.ty}@${node.addressSpace}"
+    s"${node.value}:${postfix(node)}"
   }
 
   override def visit(node: Expression.Size, a: Unit): String = {
-    s"${node.value}:${node.ty}@${node.addressSpace}"
+    s"${node.value}:${postfix(node)}"
   }
 }
 

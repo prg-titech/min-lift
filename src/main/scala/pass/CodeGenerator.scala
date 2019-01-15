@@ -7,6 +7,7 @@ import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
 import ast._
 import pass.MemoryAllocator._
+import structures._
 
 class CodeGenerator extends ExpressionVisitor[Unit, String] {
   val chunkSize = 5
@@ -90,6 +91,15 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     }
     else {
       typeStr
+    }
+  }
+
+  def varDecl(name: Expression.Identifier, ty: Type, code: CodeVariable): String = {
+    if (ty.isInstanceOf[Type.Tuple2]) {
+      ""
+    }
+    else {
+      s"${ty.toCL} ${name.value} = $code;"
     }
   }
 
@@ -393,12 +403,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
   override def visit(node: Expression.Lambda, arg: ArgumentType): ResultType = {
     val argDecls = node.args.reverse.map(arg => {
       val argCode = varStack.pop()
-      if (arg.ty.isInstanceOf[Type.Tuple2]) {
-        ""
-      }
-      else {
-        s"${arg.ty.toCL} ${arg.value} = $argCode;"
-      }
+      varDecl(arg, arg.ty, argCode)
     }).mkString("\n")
 
     node.args.foreach(arg => {
@@ -417,6 +422,14 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
        |$bodyCode
        |$result = $resultCode;
      """.stripMargin
+  }
+
+  override def visit(node: Expression.Let, arg: ArgumentType): ResultType = {
+    node.value.accept(this, arg)
+    val valueDecl = varDecl(node.id, node.value.ty, varStack.pop())
+
+    // val body
+    ""
   }
 
   override def visit(node: Expression.Identifier, arg: ArgumentType): ResultType = ""

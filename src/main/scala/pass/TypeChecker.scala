@@ -80,6 +80,15 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
     }
   }
 
+  override def visit(let: Let, env: ArgumentType): ResultType = {
+    let.value.accept(this, env).flatMap { case (valueType, valueSubst) =>
+      let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), valueType)))).map { case (ty, subst) =>
+        let.ty = ty
+        (ty, valueSubst.concat(subst))
+      }
+    }
+  }
+
   override def visit(apply: Apply, env: ArgumentType): ResultType = {
     apply.callee.accept(this, env).flatMap { case (ty1, subst1) =>
       // convert List[Either[E, X]] to Either[E, List[X]]
@@ -147,6 +156,13 @@ class TypeReplacer(val subst: Subst) extends ExpressionVisitor[UniqueIdGenerator
 
   override def visit(node: Lambda, arg: ArgumentType): Unit = {
     node.args.foreach(_.accept(this, arg))
+    node.body.accept(this, arg)
+
+    node.ty = subst.replace(node.ty)(arg)
+  }
+
+  override def visit(node: Let, arg: ArgumentType): Unit = {
+    node.value.accept(this, arg)
     node.body.accept(this, arg)
 
     node.ty = subst.replace(node.ty)(arg)

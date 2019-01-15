@@ -206,7 +206,9 @@ object Expression {
   }
 
   case class Let(val id: Identifier, val value: Expression, val body: Expression, val unpack: Boolean) extends Expression {
-    def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R = ???
+    def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R = {
+      visitor.visit(this, arg)
+    }
   }
 
   case class Identifier(val value: String, val isParam: Boolean) extends Expression {

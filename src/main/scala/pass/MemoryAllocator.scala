@@ -68,6 +68,10 @@ object MemoryAllocator  {
         }
       }
       case Lambda(_, body) => inferAddressSpaceExpr(body, writeTo)
+      case Let(_, value, body, _) => {
+        inferAddressSpaceExpr(value, writeTo)
+        inferAddressSpaceExpr(body, writeTo)
+      }
       case _ => {}
     }
   }
