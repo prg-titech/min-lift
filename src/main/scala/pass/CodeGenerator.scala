@@ -9,7 +9,7 @@ import ast._
 import pass.MemoryAllocator._
 import structures._
 
-class CodeGenerator extends ExpressionVisitor[Unit, String] {
+class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String] {
   val chunkSize = 5
 
   var indexVarCount = 0
@@ -50,7 +50,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
   }
 
   def safeAcceptAndPop(value: Option[Expression]) = {
-    val code = value.map(_.accept(this, ()))
+    val code = value.map(_.accept(this, EmptyEnvironment[CodeVariable]())) // FIXME
     (varStack.pop(), code.getOrElse(""))
   }
 
@@ -103,7 +103,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     }
   }
 
-  def visit(node: Lift, arg: ArgumentType): ResultType = {
+  def visit(node: Lift, env: ArgumentType): ResultType = {
     val Expression.Lambda(params, body) = node.body
 
     def generateParam(ty: Type, param: Expression.Identifier): String = {
@@ -115,7 +115,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
     params.foreach(param => varStack.push(CodeVariable(param.value)))
 
-    val bodyCode = body.accept(this, ())
+    val bodyCode = body.accept(this, env)
 
     val postfixCode = (varStack.top match {
       case CodeVariable("result") => ""
@@ -193,7 +193,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     }
   }
 
-  override def visit(node: Expression.Apply, arg: ArgumentType): ResultType = {
+  override def visit(node: Expression.Apply, env: ArgumentType): ResultType = {
     node.callee match {
       case Expression.Identifier(id, false) => {
         id match {
@@ -209,7 +209,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 
             val index = ViewConstructor.construct(node.view).getOrElse(s"${collection.code}[$vi]")
             varStack.push(CodeVariable(index))
-            val funcCode = func.accept(this, ())
+            val funcCode = func.accept(this, env)
             val resultCode = varStack.pop()
 
             val (result, resultDecl) = generateResult(node.addressSpace, resultType)
@@ -270,14 +270,14 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
             val func = node.args(1)
             var (collection, prevCode) = safeAcceptAndPop(node.args.lift(2))
 
-            prevCode += init.accept(this, ()) + "\n"
+            prevCode += init.accept(this, env) + "\n"
             val initCode = varStack.pop()
 
             val acc = CodeVariable("acc")
 
             varStack.push(acc)
             varStack.push(CodeVariable(ViewConstructor.construct(node.view).right.get))
-            val funcCode = func.accept(this, ())
+            val funcCode = func.accept(this, env)
             val resultCode = varStack.pop().code
 
             val Type.Array(inner, length) = node.callee.ty.asInstanceOf[Type.Arrow].nthArg(2)
@@ -310,7 +310,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
             val input = CodeVariable(s"${collection.code}[$vi]")
 
             varStack.push(input)
-            val funcCode = func.accept(this, ())
+            val funcCode = func.accept(this, env)
             val resultCode = varStack.pop().code
 
             val (result, resultDecl) = generateResult(node.addressSpace, resultType, true)
@@ -344,7 +344,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
             val input = CodeVariable(s"${collection.code}[$vi]")
 
             varStack.push(input)
-            val funcCode = func.accept(this, ())
+            val funcCode = func.accept(this, env)
             val resultCode = varStack.pop().code
 
             val resultType = node.ty
@@ -366,7 +366,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
              """.stripMargin
           }
           case "join" => {
-            node.args(0).accept(this, ())
+            node.args(0).accept(this, env)
           }
           case "split" | "zip" => {
             // do nothing
@@ -376,9 +376,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
             varStack.push(CodeVariable(ViewConstructor.construct(node.view).right.get))
             ""
           }
-          case "toGlobal" => node.args(0).accept(this, ())
-          case "toLocal" => node.args(0).accept(this, ())
-          case "toPrivate" => node.args(0).accept(this, ())
+          case "toGlobal" | "toLocal" | "toPrivate" => node.args(0).accept(this, env)
           // case id@(Expression.Identifier("+", false) | Expression.Identifier("*", false)) => {
           case op@("+" | "*" | "<") => {
             val resultType = node.callee.ty.representativeType
@@ -400,17 +398,13 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
     }
   }
 
-  override def visit(node: Expression.Lambda, arg: ArgumentType): ResultType = {
+  override def visit(node: Expression.Lambda, env: ArgumentType): ResultType = {
     val argDecls = node.args.reverse.map(arg => {
       val argCode = varStack.pop()
       varDecl(arg, arg.ty, argCode)
     }).mkString("\n")
 
-    node.args.foreach(arg => {
-      varStack.push(CodeVariable(arg.value))
-    })
-
-    val bodyCode = node.body.accept(this, ())
+    val bodyCode = node.body.accept(this, env)
     val resultCode = varStack.pop()
 
     val resultType = node.ty.representativeType
@@ -424,15 +418,18 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
      """.stripMargin
   }
 
-  override def visit(node: Expression.Let, arg: ArgumentType): ResultType = {
-    node.value.accept(this, arg)
+  override def visit(node: Expression.Let, env: ArgumentType): ResultType = {
+    node.value.accept(this, env)
     val valueDecl = varDecl(node.id, node.value.ty, varStack.pop())
 
     // val body
     ""
   }
 
-  override def visit(node: Expression.Identifier, arg: ArgumentType): ResultType = ""
+  override def visit(node: Expression.Identifier, arg: ArgumentType): ResultType = {
+    varStack.push(CodeVariable(node.value))
+    ""
+  }
 
   override def visit[U](node: Expression.Const[U], arg: ArgumentType): ResultType = {
     val (result, resultDecl) = generateResult(None, node.ty)
@@ -446,7 +443,7 @@ class CodeGenerator extends ExpressionVisitor[Unit, String] {
 }
 
 object CodeGenerator {
-  def generate(node: Lift) = (new CodeGenerator).visit(node, ())
+  def generate(node: Lift) = (new CodeGenerator).visit(node, EmptyEnvironment[CodeVariable]())
 }
 
 class CodeVariable(val code: String) {
