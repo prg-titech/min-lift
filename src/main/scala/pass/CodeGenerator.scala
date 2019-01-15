@@ -405,25 +405,24 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
     }).mkString("\n")
 
     val bodyCode = node.body.accept(this, env)
-    val resultCode = varStack.pop()
-
-    val resultType = node.ty.representativeType
-    val (result, resultDecl) = generateResult(None, resultType)
 
     s"""
        |$argDecls
-       |$resultDecl
        |$bodyCode
-       |$result = $resultCode;
      """.stripMargin
   }
 
   override def visit(node: Expression.Let, env: ArgumentType): ResultType = {
-    node.value.accept(this, env)
+    val valueCode = node.value.accept(this, env)
     val valueDecl = varDecl(node.id, node.value.ty, varStack.pop())
 
-    // val body
-    ""
+    val bodyCode = node.body.accept(this, env)
+
+    s"""
+       |$valueCode
+       |$valueDecl
+       |$bodyCode
+     """.stripMargin
   }
 
   override def visit(node: Expression.Identifier, arg: ArgumentType): ResultType = {
