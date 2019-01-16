@@ -1,7 +1,5 @@
 package pass
 
-import ast.Type.SizeDynamicInstance
-
 import scala.collection._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
@@ -128,7 +126,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
         }
       }
     }) + "\n" + (body.ty match {
-      case Type.Array(_, SizeDynamicInstance(_)) => {
+      case Type.Existential(_, Type.Array(_, _)) => {
         "*result_size = ary_size;"
       }
       case Type.Array(_, size) => {

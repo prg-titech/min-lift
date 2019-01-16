@@ -359,8 +359,6 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
     case SizeDivision(dd, dr) => SizeDivision(replace(dd), replace(dr))
     case SizeMultiply(x, y)   => SizeMultiply(replace(x), replace(y))
     case SizeConst(_) => ty
-    case SizeDynamic() => SizeDynamicInstance(idGen.generateInt())
-    case SizeDynamicInstance(_) => ty
     case Existential(tv, ty) => Existential(replace(tv).asInstanceOf[TypeVar], replace(ty))
   }
 

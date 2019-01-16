@@ -163,21 +163,6 @@ object Type {
     }
   }
 
-  case class SizeDynamic() extends Size {
-    override def toString: String = ???
-    override def toCL: String = ???
-
-    def hasTypeVar(typeVar: TypeVar): Boolean = ???
-    def replaceBy(from: TypeVar, to: Type): Type = ???
-  }
-  case class SizeDynamicInstance(val id: Int) extends Size {
-    override def toString: String = s"dyn#$id"
-    override def toCL: String = "dyn"
-
-    def hasTypeVar(typeVar: TypeVar): Boolean = false
-    def replaceBy(from: TypeVar, to: Type): Type = this
-  }
-
   case class Existential(typeVar: TypeVar, ty: Type) extends Type {
     override def toCL: String = ty.toCL
     override def hasTypeVar(tv: TypeVar): Boolean = typeVar.hasTypeVar(tv)
