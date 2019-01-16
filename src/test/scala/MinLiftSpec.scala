@@ -65,11 +65,12 @@ class MinLiftSpec extends FunSpec {
             | (N)
             | ((array-type float N))
             | (lambda (xs)
-            |   (map (filterSeq (lambda (x) true) xs))))
+            |   (mapSeq (filterSeq (lambda (x) true) xs))))
           """.stripMargin
 
         val lift = TypeChecker.check(parse(code))
 
+        println(lift)
         assert(lift.isInstanceOf[Left[String, Lift]])
       }
       it("should fail with zip from two different filter functions") {

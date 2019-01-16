@@ -31,7 +31,7 @@ class AstPrinter extends ExpressionVisitor[Unit, String] {
   override def visit(node: Expression.Let, a: Unit): String = {
     s"""
        |(let ${node.id} ${node.value.accept(this, ())}
-       |  ${node.body.accept(this, ())}):${postfix(node)}
+       |  ${pad(node.body.accept(this, ()))}):${postfix(node)}
      """
   }
 

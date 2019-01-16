@@ -162,6 +162,7 @@ object Type {
       SizeMultiply(a.replaceBy(from, to), b.replaceBy(from, to))
     }
   }
+
   case class SizeDynamic() extends Size {
     override def toString: String = ???
     override def toCL: String = ???
@@ -178,7 +179,7 @@ object Type {
   }
 
   case class Existential(typeVar: TypeVar, ty: Type) extends Type {
-    override def toCL: String = ???
+    override def toCL: String = ty.toCL
     override def hasTypeVar(tv: TypeVar): Boolean = typeVar.hasTypeVar(tv)
     override def replaceBy(from: TypeVar, to: Type): Type = Existential(typeVar, ty.replaceBy(from, to))
   }
