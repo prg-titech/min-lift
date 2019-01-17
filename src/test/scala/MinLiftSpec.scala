@@ -36,7 +36,7 @@ class MinLiftSpec extends FunSpec {
       assert(Parser.parse(tokens).isInstanceOf[Right[String, Lift]])
     }
 
-    it("should return error for invalid grammer") {
+    it("should return error for invalid grammar") {
       assert(safeParse("(+ 1 2)").isInstanceOf[Left[String, Lift]])
       assert(safeParse(code.slice(0, code.length - 1)).isInstanceOf[Left[String, Lift]])
     }
@@ -58,20 +58,22 @@ class MinLiftSpec extends FunSpec {
     }
 
     describe("existential type") {
-      it("should fail with map from fitler") {
+      it("should fail with map from filter") {
         val code =
           """
             |(lift
             | (N)
             | ((array-type float N))
             | (lambda (xs)
-            |   (mapSeq (filterSeq (lambda (x) true) xs))))
+            |   (mapSeq id (filterSeq (lambda (x) true) xs))))
           """.stripMargin
 
         val lift = TypeChecker.check(parse(code))
 
         println(lift)
         assert(lift.isInstanceOf[Left[String, Lift]])
+        val Left(err) = lift
+        assert(err.contains("unsolvable constraints") && err.contains("Existential"))
       }
       it("should fail with zip from two different filter functions") {
         val code =
@@ -89,6 +91,8 @@ class MinLiftSpec extends FunSpec {
 
         println(lift)
         assert(lift.isInstanceOf[Left[String, Lift]])
+        val Left(err) = lift
+        assert(err.contains("unsolvable constraints"))
       }
 
       it("should accept with zip from two identical filter functions") {
@@ -106,6 +110,22 @@ class MinLiftSpec extends FunSpec {
         val lift = TypeChecker.check(parse(code))
 
         // println(lift)
+        assert(lift.isInstanceOf[Right[String, Lift]])
+      }
+
+      it("should accept unpack with lambda argument") {
+        val code =
+          """
+            |(lift
+            | (N)
+            | ((array-type float N))
+            | (lambda (xs)
+            |   ((lambda (x) (unpack y x (reduceSeq 0.0f + y)))
+            |     (filterSeq (lambda (x) (< x 5.0f)) xs))))
+          """.stripMargin
+
+        val lift = TypeChecker.check(parse(code))
+
         assert(lift.isInstanceOf[Right[String, Lift]])
       }
     }

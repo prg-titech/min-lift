@@ -81,39 +81,24 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
   }
 
   override def visit(let: Let, env: ArgumentType): ResultType = {
+    // TODO: free type variable check
     let.value.accept(this, env).flatMap { case (valueType, valueSubst) =>
 
-      val valueType2 = if (!let.unpack) {
-        valueType
+      if (!let.unpack) {
+        let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), valueType)))).map { case (ty, subst) =>
+          let.ty = ty
+          (ty, valueSubst.concat(subst))
+        }
       }
       else {
-        val tvty: Either[String, (TypeVar, Type)] = valueType match {
-          case Existential(tv, ty) => Right((tv, ty))
-          case tv@TypeVar(_) => {
-            TypeChecker.unify(valueSubst, EmptySubst()).flatMap(valueSubst => {
-              val valueType = valueSubst.lookup(tv)
-              valueType match {
-                case Existential(tv, ty) => Right((tv, ty))
-                case _ => Left(s"value of unpack(${valueType}) must be existential type")
-              }
-            })
-          }
-          case _ => Left(s"value of unpack(${valueType}) must be existential type")
-        }
+        val existTyVar = idGen.generateTypeVar()
+        val existSize = SizeVariable(s"l${idGen.generateInt()}")
+        val existType = Existential(existTyVar, Array(idGen.generateTypeVar(), existSize))
 
-        tvty match {
-          case Right((tv, ty)) => {
-            ty.replaceBy(tv, SizeVariable(s"l${idGen.generateInt()}"))
-          }
-          case Left(err) => {
-            return Left(err)
-          }
+        let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), existType.ty)))).map { case (ty, subst) =>
+          let.ty = ty
+          (ty, valueSubst.concat(subst)/*.append(existTyVar, existSize)*/.append(valueType, existType))
         }
-      }
-
-      let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), valueType2)))).map { case (ty, subst) =>
-        let.ty = ty
-        (ty, valueSubst.concat(subst))
       }
     }
   }
@@ -359,7 +344,7 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
     case SizeDivision(dd, dr) => SizeDivision(replace(dd), replace(dr))
     case SizeMultiply(x, y)   => SizeMultiply(replace(x), replace(y))
     case SizeConst(_) => ty
-    case Existential(tv, ty) => Existential(replace(tv).asInstanceOf[TypeVar], replace(ty))
+    case Existential(tv, ty) => Existential(tv, replace(ty))
   }
 
   def replace(env: Environment[TypeScheme])(implicit idGen: UniqueIdGenerator): Environment[TypeScheme] = env match {
