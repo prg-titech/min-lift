@@ -129,6 +129,10 @@ int main(int argc, char *argv[])
     for (int i = 0; i < raw_xses.size(); i++) {
       queue.enqueueWriteBuffer(xses[i], CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_xses[i].data()));
     }
+    {
+      std::vector<float> zeros(N, 0.0f);
+      queue.enqueueWriteBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(zeros.data()));
+    }
 
     if (use_filter_global) {
       cl::Kernel kernel(program, "KERNEL");

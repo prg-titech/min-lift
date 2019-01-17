@@ -62,7 +62,8 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
     }
 
     val vc = if (dynamic) {
-      CodeDynArrayVariable(name, CodeVariable(s"ary_size"))
+      val Type.Existential(_, Type.Array(_, size)) = ty
+      CodeDynArrayVariable(name, CodeVariable(size.toCL))
     } else {
       CodeVariable(name)
     }
