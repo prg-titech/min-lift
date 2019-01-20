@@ -55,6 +55,7 @@ object MemoryAllocator  {
               case "mapSeq" | "mapGlobal" => writeTo
               case _ => writeTo
             }
+            expr.addressSpace = argsWriteTo
             args.foreach(arg => inferAddressSpaceExpr(arg, argsWriteTo))
           }
           case Apply(_, _) => {

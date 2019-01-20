@@ -63,7 +63,11 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
 
     val vc = if (dynamic) {
       val Type.Existential(_, Type.Array(_, size)) = ty
-      CodeDynArrayVariable(name, CodeVariable(size.toCL))
+      val sizeStr = size match {
+        case Type.TypeVar(_) => "ary_size"
+        case _ => size.toCL
+      }
+      CodeDynArrayVariable(name, CodeVariable(sizeStr))
     } else {
       CodeVariable(name)
     }
@@ -93,12 +97,12 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
     }
   }
 
-  def varDecl(name: Expression.Identifier, ty: Type, code: CodeVariable): String = {
+  def varDecl(name: Expression.Identifier, ty: Type, addrSpace: Option[AddressSpace], code: CodeVariable): String = {
     if (ty.isInstanceOf[Type.Tuple2]) {
       ""
     }
     else {
-      s"${ty.toCL} ${name.value} = $code;"
+      s"${addrSpace.map(_.toCL).getOrElse("")} ${ty.toCL} ${name.value} = $code;"
     }
   }
 
@@ -154,7 +158,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
         |  global int* result_size,
         |  global int* bitmap,
         |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
-        |     int ary_size = 0;
+        |     // int ary_size = 0;
         |
         |     ${codeChunks(0)}
         |}
@@ -183,7 +187,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
         |  global int* result_size,
         |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
         |
-        |     int ary_size = 0;
+        |     // int ary_size = 0;
         |
         |     $bodyCode
         |     $postfixCode
@@ -317,6 +321,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
             s"""
                |$prevCode
                |$resultDecl
+               |int ${result.size("len")} = 0;
                |{
                |  int idx = 0;
                |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
@@ -376,7 +381,6 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
             ""
           }
           case "toGlobal" | "toLocal" | "toPrivate" => node.args(0).accept(this, env)
-          // case id@(Expression.Identifier("+", false) | Expression.Identifier("*", false)) => {
           case op@("+" | "*" | "<") => {
             val resultType = node.callee.ty.representativeType
 
@@ -400,7 +404,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
   override def visit(node: Expression.Lambda, env: ArgumentType): ResultType = {
     val argDecls = node.args.reverse.map(arg => {
       val argCode = varStack.pop()
-      varDecl(arg, arg.ty, argCode)
+      varDecl(arg, arg.ty, None, argCode)
     }).mkString("\n")
 
     val bodyCode = node.body.accept(this, env)
@@ -413,7 +417,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
 
   override def visit(node: Expression.Let, env: ArgumentType): ResultType = {
     val valueCode = node.value.accept(this, env)
-    val valueDecl = varDecl(node.id, node.value.ty, varStack.pop())
+    val valueDecl = varDecl(node.id, node.value.ty, node.value.addressSpace, varStack.pop())
 
     val bodyCode = node.body.accept(this, env)
 
