@@ -40,8 +40,8 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
       ("mapWrg" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("mapLcl" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("reduceSeq" -> TypeScheme(List(a, b, c), b ->: (b ->: a ->: b) ->: Array(a, c) ->: Array(b, SizeConst(1)))),
-      ("filterSeq" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Existential(c, Array(a, c)))),
-      ("filterGlb" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Existential(c, Array(a, c)))),
+      ("filterSeq" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Existential(Array(a, c)))),
+      ("filterGlb" -> TypeScheme(List(a, b, c), (a ->: Boolean) ->: Array(a, b) ->: Existential(Array(a, c)))),
       ("split" -> TypeScheme(List(a, b, c), a ->: Array(b, c) ->: Array(Array(b, a), SizeDivision(c, a)))),
       ("join" -> TypeScheme(List(a, b, c), Array(Array(a, b), c) ->: Array(a, SizeMultiply(b, c)))),
       ("zip" -> TypeScheme(List(a, b, c), Array(a, c) ->: Array(b, c) ->: Array(Tuple2(a, b), c))),
@@ -93,7 +93,7 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
       else {
         val existTyVar = idGen.generateTypeVar()
         val existSize = SizeVariable(s"l${idGen.generateInt()}")
-        val existType = Existential(existTyVar, Array(idGen.generateTypeVar(), existSize))
+        val existType = Existential(Array(idGen.generateTypeVar(), existSize))
 
         let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), existType.ty)))).map { case (ty, subst) =>
           let.ty = ty
@@ -248,8 +248,8 @@ object TypeChecker {
       case SubstCons(SizeBinaryOperator(a1, b1), SizeBinaryOperator(a2, b2), next) => {
         unify(next.append(a1, b1).append(a2, b2), result)
       }
-      case SubstCons(Existential(tv1, ty1), Existential(tv2, ty2), next) => {
-        unify(next.append(tv1, tv2).append(ty1, ty2), result)
+      case SubstCons(Existential(ty1), Existential(ty2), next) => {
+        unify(next.append(ty1, ty2), result)
       }
       case SubstCons(ty1, ty2, next) => {
         if (ty1 == ty2) {
@@ -344,7 +344,7 @@ case class SubstCons(val t1: Type, val t2: Type, val next: Subst) extends Subst 
     case SizeDivision(dd, dr) => SizeDivision(replace(dd), replace(dr))
     case SizeMultiply(x, y)   => SizeMultiply(replace(x), replace(y))
     case SizeConst(_) => ty
-    case Existential(tv, ty) => Existential(tv, replace(ty))
+    case Existential(ty) => Existential(replace(ty))
   }
 
   def replace(env: Environment[TypeScheme])(implicit idGen: UniqueIdGenerator): Environment[TypeScheme] = env match {

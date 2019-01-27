@@ -62,7 +62,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
     }
 
     val vc = if (dynamic) {
-      val Type.Existential(_, Type.Array(_, size)) = ty
+      val Type.Existential(Type.Array(_, size)) = ty
       val sizeStr = size match {
         case Type.TypeVar(_) => "ary_size"
         case _ => size.toCL
@@ -131,7 +131,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
         }
       }
     }) + "\n" + (body.ty match {
-      case Type.Existential(_, Type.Array(_, _)) => {
+      case Type.Existential(Type.Array(_, _)) => {
         "*result_size = ary_size;"
       }
       case Type.Array(_, size) => {
