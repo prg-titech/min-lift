@@ -381,7 +381,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
             ""
           }
           case "toGlobal" | "toLocal" | "toPrivate" => node.args(0).accept(this, env)
-          case op@("+" | "*" | "<") => {
+          case op@("+" | "*" | "<" | ">") => {
             val resultType = node.callee.ty.representativeType
 
             val (left, prevLeft) = safeAcceptAndPop(node.args.lift(0))

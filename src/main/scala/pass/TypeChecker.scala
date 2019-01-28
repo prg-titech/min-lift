@@ -58,6 +58,7 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
       ("*" -> TypeScheme(List(), Float ->: Float ->: Float)),
       ("+" -> TypeScheme(List(), Float ->: Float ->: Float)),
       ("<" -> TypeScheme(List(), Float ->: Float ->: Boolean)),
+      (">" -> TypeScheme(List(), Float ->: Float ->: Boolean)),
     ))
       .pushEnv(lambdaEnv.toMap)
 
