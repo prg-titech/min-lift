@@ -1,5 +1,5 @@
 # COMPILER = sudo nvidia-docker run --rm -v `pwd`:/min-lift -it min-lift g++ -std=c++11
-COMPILER = clang++ -std=c++11
+COMPILER = clang++ -std=c++14
 
 all: runtime profiler
 
