@@ -23,12 +23,14 @@ int main(int argc, char *argv[])
     ("f,file", "Kernel file name", cxxopts::value<std::string>())
     ("d,data", "Input data file(s) name", cxxopts::value<std::string>())
     ("q,quiet", "Be queit", cxxopts::value<bool>()->default_value("false"))
-    ("c,check", "Only checks weather kernel can be compiled", cxxopts::value<bool>()->default_value("false"));
+    ("c,check", "Only checks weather kernel can be compiled", cxxopts::value<bool>()->default_value("false"))
+    ("p,profile", "Profiling mode", cxxopts::value<bool>()->default_value("false"));
 
   try {
     auto opts = optp.parse(argc, argv);
     const std::string file = opts["file"].as<std::string>();
     const bool quiet = opts["quiet"].count();
+    const bool profile = opts["profile"].count();
 
     std::ifstream ifs(file);
     if (ifs.fail()) {
@@ -123,7 +125,6 @@ int main(int argc, char *argv[])
 
     cl::Buffer result_size(context, CL_MEM_READ_WRITE, sizeof(int));
 
-    cl::Event event;
     cl::CommandQueue queue(context, devices[0], CL_QUEUE_PROFILING_ENABLE);
 
     for (int i = 0; i < raw_xses.size(); i++) {
@@ -134,9 +135,12 @@ int main(int argc, char *argv[])
       queue.enqueueWriteBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(zeros.data()));
     }
 
+    cl_ulong exe_time = 0;
+
     if (use_filter_global) {
       cl::Kernel kernel(program, "KERNEL");
       cl::Kernel kernel2(program, "KERNEL2");
+      cl::Kernel kernel3(program, "KERNEL3");
       cl::Kernel prefix_sum(program, "prefix_sum");
 
       const cl::size_type bitmap_size = sizeof(int) * N;
@@ -144,6 +148,8 @@ int main(int argc, char *argv[])
       cl::Buffer bitmap_dup(context, CL_MEM_READ_WRITE, bitmap_size);
 
       cl::Buffer indices(context, CL_MEM_READ_WRITE, bitmap_size);
+
+      cl_ulong start_time = 0, end_time = 0;
 
       {
         int arg_i = 0;
@@ -157,9 +163,12 @@ int main(int argc, char *argv[])
         cl_int cl_N = N;
         kernel.setArg(arg_i, sizeof(cl_N), &cl_N);
 
+        cl::Event event;
         queue.enqueueNDRangeKernel(
             kernel, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
         event.wait();
+
+        start_time = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
       }
 
       {
@@ -173,6 +182,7 @@ int main(int argc, char *argv[])
           prefix_sum.setArg(arg_i++, indices);
           prefix_sum.setArg(arg_i++, i);
 
+          cl::Event event;
           queue.enqueueNDRangeKernel(
               prefix_sum, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
           event.wait();
@@ -195,10 +205,33 @@ int main(int argc, char *argv[])
         cl_int cl_N = N;
         kernel2.setArg(arg_i, sizeof(cl_N), &cl_N);
 
+        cl::Event event;
         queue.enqueueNDRangeKernel(
             kernel2, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
         event.wait();
       }
+
+      {
+        queue.enqueueCopyBuffer(result, xses[0], 0, 0, sizeof(float) * N);
+        int arg_i = 0;
+        for (auto &xs : xses) {
+          kernel3.setArg(arg_i, xs);
+          arg_i++;
+        }
+        kernel3.setArg(arg_i++, result);
+        kernel3.setArg(arg_i++, result_size);
+        cl_int cl_N = N;
+        kernel3.setArg(arg_i, sizeof(cl_N), &cl_N);
+
+        cl::Event event;
+        queue.enqueueNDRangeKernel(
+            kernel3, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
+        event.wait();
+
+        end_time = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+      }
+
+      exe_time = end_time - start_time;
     }
     else {
       cl::Kernel kernel(program, "KERNEL");
@@ -213,9 +246,12 @@ int main(int argc, char *argv[])
       cl_int cl_N = N;
       kernel.setArg(arg_i, sizeof(cl_N), &cl_N);
 
+      cl::Event event;
       queue.enqueueNDRangeKernel(
           kernel, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
       event.wait();
+
+      exe_time = event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
     }
 
     std::vector<float> raw_result(raw_xses[0].size());
@@ -232,9 +268,7 @@ int main(int argc, char *argv[])
     }
 
     if (!quiet) {
-      cl_ulong start = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
-      cl_ulong end = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
-      std::cout << "execution time: " << static_cast<double>(end-start)*1e-3f << " us" << std::endl;
+      std::cout << "execution time: " << static_cast<double>(exe_time)*1e-3f << " us" << std::endl;
     }
 
     return 0;

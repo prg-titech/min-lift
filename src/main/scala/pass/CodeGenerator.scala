@@ -148,7 +148,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
         ("UseFilterGlobal" -> splitKernel)
 
     if (splitKernel) {
-      val codeChunks = bodyCode.split("// ---", 2)
+      val codeChunks = bodyCode.split("// ---", 3)
 
       s"""// ${compact(render(config))}
         |
@@ -173,6 +173,15 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
         |     int ary_size = 0;
         |     ${codeChunks(1)}
         |     $postfixCode
+        |}
+        |
+        |kernel void KERNEL3(
+        |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
+        |  global $resultType result,
+        |  global int* result_size,
+        |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
+        |     int ary_size = 0;
+        |     ${codeChunks(2)}
         |}
         |
         |$prefixSumKernel
@@ -367,6 +376,8 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
                |  ${result.assign(s"indices[$vi] - 1", input)}
                |}
                |${result.assignSize(s"indices[${length.toCL} - 1]")}
+               |
+               |// ---
              """.stripMargin
           }
           case "join" => {
@@ -461,6 +472,13 @@ object CodeVariable {
 }
 
 case class CodeDynArrayVariable(c: String, sizeVar: CodeVariable) extends CodeVariable(c) {
-  override def assignSize(size: String): String = s"${sizeVar.code} = $size;"
+  override def assignSize(size: String): String = {
+    if (sizeVar.code == "ary_size") {
+      s"${sizeVar.code} = $size;"
+    }
+    else {
+      s"int ${sizeVar.code} = $size;"
+    }
+  }
   override def size(alt: String): String = sizeVar.toString
 }
