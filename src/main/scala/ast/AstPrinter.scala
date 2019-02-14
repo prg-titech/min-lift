@@ -35,6 +35,10 @@ class AstPrinter extends ExpressionVisitor[Unit, String] {
      """
   }
 
+  override def visit(node: Expression.Pack, a: Unit): String = {
+    s"(pack ${node.value}):${postfix(node)}"
+  }
+
   override def visit(node: Expression.Identifier, a: Unit): String = {
     s"${node.value}:${postfix(node)}"
   }

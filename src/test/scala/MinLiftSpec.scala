@@ -58,7 +58,7 @@ class MinLiftSpec extends FunSpec {
     }
 
     describe("existential type") {
-      it("should fail with map from filter") {
+      it("should fail map from filter") {
         val code =
           """
             |(lift
@@ -75,7 +75,7 @@ class MinLiftSpec extends FunSpec {
         val Left(err) = lift
         assert(err.contains("unsolvable constraints") && err.contains("Existential"))
       }
-      it("should fail with zip from two different filter functions") {
+      it("should fail zip from two different filter functions") {
         val code =
           """
             |(lift
@@ -84,7 +84,7 @@ class MinLiftSpec extends FunSpec {
             | (lambda (xs)
             |   (unpack xs1 (filterSeq (lambda (x) true) xs)
             |     (unpack xs2 (filterSeq (lambda (x) true) xs)
-            |       (zip xs1 xs2)))))
+            |       (pack (zip xs1 xs2))))))
           """.stripMargin
 
         val lift = TypeChecker.check(parse(code))
@@ -94,8 +94,42 @@ class MinLiftSpec extends FunSpec {
         val Left(err) = lift
         assert(err.contains("unsolvable constraints"))
       }
+      it("should fail without packing a unpacked array") {
+        val code =
+          """
+            |(lift
+            | (N)
+            | ((array-type float N))
+            | (lambda (xs)
+            |   (unpack ys (filterSeq (lambda (x) true) xs)
+            |     ys)))
+          """.stripMargin
 
-      it("should accept with zip from two identical filter functions") {
+        val lift = TypeChecker.check(parse(code))
+
+        println(lift)
+        assert(lift.isInstanceOf[Left[String, Lift]])
+        val Left(err) = lift
+        assert(err.contains("result type of unpack has its size variable"))
+      }
+
+      it("should accept packing a unpacked array") {
+        val code =
+          """
+            |(lift
+            | (N)
+            | ((array-type float N))
+            | (lambda (xs)
+            |   (unpack ys (filterSeq (lambda (x) true) xs)
+            |     (pack ys))))
+          """.stripMargin
+
+        val lift = TypeChecker.check(parse(code))
+
+        // println(lift)
+        assert(lift.isInstanceOf[Right[String, Lift]])
+      }
+      it("should accept zip from two identical filter functions") {
         val code =
           """
             |(lift
@@ -104,7 +138,7 @@ class MinLiftSpec extends FunSpec {
             | (lambda (xs)
             |  (unpack ys (filterSeq (lambda (x) true) xs)
             |   (let zs ys
-            |    (zip ys zs)))))
+            |    (pack (zip ys zs))))))
           """.stripMargin
 
         val lift = TypeChecker.check(parse(code))
@@ -112,7 +146,6 @@ class MinLiftSpec extends FunSpec {
         // println(lift)
         assert(lift.isInstanceOf[Right[String, Lift]])
       }
-
       it("should accept unpack with lambda argument") {
         val code =
           """
@@ -120,7 +153,7 @@ class MinLiftSpec extends FunSpec {
             | (N)
             | ((array-type float N))
             | (lambda (xs)
-            |   ((lambda (x) (unpack y x (reduceSeq 0.0f + y)))
+            |   ((lambda (x) (unpack y x (pack (reduceSeq 0.0f + y))))
             |     (filterSeq (lambda (x) (< x 5.0f)) xs))))
           """.stripMargin
 

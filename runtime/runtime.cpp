@@ -139,7 +139,7 @@ int main(int argc, char *argv[])
     cl_ulong sum_exe_time = 0;
     const int exe_count = profile ? 20 : 1;
 
-    for (int i = 0; i < exe_count; i++) {
+    for (int i = 0; i <= exe_count; i++) {
       cl_ulong exe_time = 0;
 
       if (kernel_count >= 2) {

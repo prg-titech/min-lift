@@ -11,7 +11,8 @@ sealed abstract class Type {
     Type.Arrow(ty, this)
   }
 
-  def hasTypeVar(typeVar: Type.TypeVar): Boolean
+  // check this has terminal type(Scalar, TypeVar and Size)
+  def hasType(ty: Type): Boolean
   def replaceBy(from: Type.TypeVar, to: Type): Type
 
   def representativeType = this
@@ -21,7 +22,7 @@ object Type {
     override def toString: String = s"<${name}>"
     override def toCL: String = ???
 
-    def hasTypeVar(typeVar: Type.TypeVar): Boolean = typeVar == this
+    def hasType(ty: Type): Boolean = ty == this
     def replaceBy(from: Type.TypeVar, to: Type): Type = {
       if (this == from) to
       else this
@@ -34,8 +35,8 @@ object Type {
 
     override def representativeType: Type = lastResultType
 
-    def hasTypeVar(typeVar: Type.TypeVar): Boolean = {
-      argType.hasTypeVar(typeVar) || resultType.hasTypeVar(typeVar)
+    def hasType(ty: Type): Boolean = {
+      argType.hasType(ty) || resultType.hasType(ty)
     }
     def replaceBy(from: Type.TypeVar, to: Type): Type = {
       Arrow(argType.replaceBy(from, to), resultType.replaceBy(from, to))
@@ -68,8 +69,8 @@ object Type {
     override def toString: String = s"$name[${innerTypes.mkString(", ")}]"
     override def toCL: String = s"$name???"
 
-    def hasTypeVar(typeVar: Type.TypeVar): Boolean = {
-      innerTypes.exists(_.hasTypeVar(typeVar))
+    def hasType(ty: Type): Boolean = {
+      innerTypes.exists(_.hasType(ty))
     }
     def replaceBy(from: Type.TypeVar, to: Type): Type = {
       TypeCon(name, innerTypes.map(_.replaceBy(from, to)))
@@ -79,7 +80,7 @@ object Type {
   abstract class Scalar(val name: String) extends Type {
     override def toCL: String = name
 
-    def hasTypeVar(typeVar: TypeVar): Boolean = false
+    def hasType(ty: Type): Boolean = ty == this
     def replaceBy(from: Type.TypeVar, to: Type): Type = this
   }
   object Scalar {
@@ -98,8 +99,8 @@ object Type {
       }
     }
 
-    override def hasTypeVar(typeVar: TypeVar): Boolean = {
-      innerType.hasTypeVar(typeVar) || size.hasTypeVar(typeVar)
+    override def hasType(ty: Type): Boolean = {
+      innerType.hasType(ty) || size.hasType(ty)
     }
     override def replaceBy(from: TypeVar, to: Type): Type = {
       Array(innerType.replaceBy(from, to), size.replaceBy(from, to))
@@ -109,8 +110,8 @@ object Type {
   case class Tuple2(fst: Type, snd: Type) extends Type {
     override def toCL: String = s"tuple2<${fst.toCL}, ${snd.toCL}>" // ???
 
-    override def hasTypeVar(typeVar: TypeVar): Boolean = {
-      fst.hasTypeVar(typeVar) || snd.hasTypeVar(typeVar)
+    override def hasType(ty: Type): Boolean = {
+      fst.hasType(ty) || snd.hasType(ty)
     }
 
     override def replaceBy(from: TypeVar, to: Type): Type = {
@@ -126,21 +127,21 @@ object Type {
     override def toString: String = name
     override def toCL: String = name
 
-    def hasTypeVar(typeVar: TypeVar): Boolean = false
+    def hasType(ty: Type): Boolean = ty == this
     def replaceBy(from: TypeVar, to: Type): Type = this
   }
   case class SizeConst(val value: Int) extends Size {
     override def toString: String = s"#${value.toString}"
     override def toCL: String = value.toString
 
-    def hasTypeVar(typeVar: TypeVar): Boolean = false
+    def hasType(ty: Type): Boolean = ty == this
     def replaceBy(from: TypeVar, to: Type): Type = this
   }
   abstract class SizeBinaryOperator(val a: Type, val b: Type) extends Size {
     override def toCL: String = ???
 
-    def hasTypeVar(typeVar: TypeVar): Boolean = {
-      a.hasTypeVar(typeVar) || b.hasTypeVar(typeVar)
+    def hasType(ty: Type): Boolean = {
+      a.hasType(ty) || b.hasType(ty)
     }
   }
   object SizeBinaryOperator {
@@ -165,7 +166,7 @@ object Type {
 
   case class Existential(/*typeVar: TypeVar,*/ ty: Type) extends Type {
     override def toCL: String = ty.toCL
-    override def hasTypeVar(tv: TypeVar): Boolean = ty.hasTypeVar(tv)
+    override def hasType(tv: Type): Boolean = ty.hasType(tv)
     override def replaceBy(from: TypeVar, to: Type): Type = Existential(ty.replaceBy(from, to))
   }
 }
@@ -192,6 +193,12 @@ object Expression {
   }
 
   case class Let(val id: Identifier, val value: Expression, val body: Expression, val unpack: Boolean) extends Expression {
+    def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R = {
+      visitor.visit(this, arg)
+    }
+  }
+
+  case class Pack(val value: Expression) extends Expression {
     def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R = {
       visitor.visit(this, arg)
     }

@@ -102,6 +102,15 @@ class Parser(val tokens: Vector[Token]) {
                 Expression.Let(id, value, body, fstId == "unpack")
               }
             }
+            case "pack" => {
+              for(
+                _ <- consume(Identifier(fstId));
+                value <- parseExpression();
+                _<- consume(RParen)
+              ) yield {
+                Expression.Pack(value)
+              }
+            }
             case _ => parseApply()
           }
         }

@@ -59,6 +59,12 @@ class Preprocessor extends ExpressionVisitor[Unit, Either[LiftError, Expression]
     })
   }
 
+  override def visit(node: Expression.Pack, a: Unit): ResultType = {
+    node.value.accept(this, ()).map(value =>
+      Expression.Pack(value)
+    )
+  }
+
   override def visit(node: Expression.Identifier, a: Unit): ResultType = {
     Right(node)
   }

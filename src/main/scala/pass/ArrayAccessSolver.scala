@@ -92,6 +92,10 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
     node.body.accept(this, env2)
   }
 
+  override def visit(node: Expression.Pack, env: ArgumentType): ResultType = {
+    node.value.accept(this, env)
+  }
+
   override def visit(node: Expression.Identifier, env: ArgumentType): ResultType = {
     stack.push(env.lookup(node.value).get)
   }

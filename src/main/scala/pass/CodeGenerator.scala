@@ -439,6 +439,10 @@ class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String]
      """.stripMargin
   }
 
+  override def visit(node: Expression.Pack, env: ArgumentType): ResultType = {
+    node.value.accept(this, env)
+  }
+
   override def visit(node: Expression.Identifier, arg: ArgumentType): ResultType = {
     varStack.push(CodeVariable(node.value))
     ""

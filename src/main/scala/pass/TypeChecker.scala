@@ -82,7 +82,6 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
   }
 
   override def visit(let: Let, env: ArgumentType): ResultType = {
-    // TODO: free type variable check
     let.value.accept(this, env).flatMap { case (valueType, valueSubst) =>
 
       if (!let.unpack) {
@@ -96,11 +95,42 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
         val existSize = SizeVariable(s"l${idGen.generateInt()}")
         val existType = Existential(Array(idGen.generateTypeVar(), existSize))
 
-        let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), existType.ty)))).map { case (ty, subst) =>
-          let.ty = ty
-          (ty, valueSubst.concat(subst)/*.append(existTyVar, existSize)*/.append(valueType, existType))
+        let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), existType.ty)))).flatMap { case (ty, bodySubst) =>
+          val subst = valueSubst.concat(bodySubst)
+
+          TypeChecker.unify(subst, EmptySubst()).flatMap(unified => {
+            val replacedTy = unified.replace(ty)(idGen)
+            if (replacedTy.hasType(existSize)) {
+              Left("result type of unpack has its size variable")
+            }
+            else {
+              let.ty = ty
+              Right((ty, subst/*.append(existTyVar, existSize)*/.append(valueType, existType)))
+            }
+          })
         }
       }
+    }
+  }
+
+  override def visit(pack: Pack, env: ArgumentType): ResultType = {
+    pack.value.accept(this, env).flatMap { case (valueType, valueSubst) =>
+      TypeChecker.unify(valueSubst, EmptySubst()).flatMap(unified => {
+        val replacedTy = unified.replace(valueType)(idGen)
+        replacedTy match {
+          case Array(innerType, size) => {
+            val existSize = SizeVariable(s"l${idGen.generateInt()}")
+            val existType = Existential(Array(innerType, existSize))
+
+            pack.ty = existType
+
+            Right((existType, valueSubst))
+          }
+          case _ => {
+            Left("value of pack must be array")
+          }
+        }
+      })
     }
   }
 
@@ -183,6 +213,12 @@ class TypeReplacer(val subst: Subst) extends ExpressionVisitor[UniqueIdGenerator
     node.ty = subst.replace(node.ty)(arg)
   }
 
+  override def visit(node: Pack, arg: ArgumentType): Unit = {
+    node.value.accept(this, arg)
+
+    node.ty = subst.replace(node.ty)(arg)
+  }
+
   override def visit(node: Identifier, arg: ArgumentType): Unit = {
     node.ty = subst.replace(node.ty)(arg)
   }
@@ -208,7 +244,7 @@ object TypeChecker {
         if (ty1 == ty2) {
           unify(next, result)
         }
-        else if (ty2.hasTypeVar(ty1)) {
+        else if (ty2.hasType(ty1)) {
           Left(s"$ty1 and $ty2: circular constraints")
         }
         else {
