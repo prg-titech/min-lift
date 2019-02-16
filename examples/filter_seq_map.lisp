@@ -4,5 +4,5 @@
  (lambda (xs)
   (toGlobal
    (unpack ys (toLocal (filterSeq (lambda (x) (< x 0.5f)) xs))
-    (mapSeq (lambda (x) (* x 2.0f)) ys)))))
+    (pack (mapSeq (lambda (x) (* x 2.0f)) ys))))))
 

@@ -3,38 +3,20 @@ package pass
 import ast._
 import ast.Type._
 import ast.Expression._
-import structures._
+import lib.ListOfEitherTransposer
+import lib._
+import errors._
 
-class UniqueIdGenerator {
-  var count = 0
+class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Environment[TypeScheme], Either[LiftError, (Type, Subst)]] {
 
-  def generateTypeVar() : TypeVar = {
-    val t = TypeVar(s"t${count}")
-    count += 1
-    t
-  }
+  def generateTypeVar(idGen: UniqueIdGenerator) = TypeVar(s"t${idGen.generateInt()}")
 
-  def generateInt() : Int = {
-    val value = count
-    count += 1
-    value
-  }
-}
+  def initEnv = {
+    val a = generateTypeVar(idGen)
+    val b = generateTypeVar(idGen)
+    val c = generateTypeVar(idGen)
 
-class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Environment[TypeScheme], Either[String, (Type, Subst)]] {
-
-  def visit(lift: Lift, _env: ArgumentType): ResultType = {
-    val Lambda(args, _) = lift.body
-
-    val lambdaEnv = args.zip(lift.inputTypes).map { case (id, ty) =>
-        id.value -> TypeScheme(List(), ty)
-    }
-
-    val a = idGen.generateTypeVar()
-    val b = idGen.generateTypeVar()
-    val c = idGen.generateTypeVar()
-
-    var env = _env.pushEnv(Map(
+    EmptyEnvironment().pushEnv(Map(
       ("mapSeq" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("mapGlb" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
       ("mapWrg" -> TypeScheme(List(a, b, c), (a ->: b) ->: Array(a, c) ->: Array(b, c))),
@@ -60,7 +42,16 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
       ("<" -> TypeScheme(List(), Float ->: Float ->: Boolean)),
       (">" -> TypeScheme(List(), Float ->: Float ->: Boolean)),
     ))
-      .pushEnv(lambdaEnv.toMap)
+  }
+
+  def visit(lift: Lift, _env: ArgumentType): ResultType = {
+    val Lambda(args, _) = lift.body
+
+    val lambdaEnv = args.zip(lift.inputTypes).map { case (id, ty) =>
+        id.value -> TypeScheme(List(), ty)
+    }
+
+    var env = _env.mergeEnv(initEnv).pushEnv(lambdaEnv.toMap)
 
     Apply(lift.body, args).accept(this, env)
   }
@@ -68,7 +59,7 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
   override def visit(lambda: Lambda, env: ArgumentType): ResultType = {
     val Lambda(args, body) = lambda
     val lambdaEnv = args.map(arg => {
-      arg.value -> TypeScheme(List(), idGen.generateTypeVar())
+      arg.value -> TypeScheme(List(), generateTypeVar(idGen))
     })
 
     body.accept(this, env.pushEnv(lambdaEnv.toMap)).map { case (ty, subst) =>
@@ -91,21 +82,23 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
         }
       }
       else {
-        val existTyVar = idGen.generateTypeVar()
         val existSize = SizeVariable(s"l${idGen.generateInt()}")
-        val existType = Existential(Array(idGen.generateTypeVar(), existSize))
+        val existType = Existential(Array(generateTypeVar(idGen), existSize))
 
-        let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), existType.ty)))).flatMap { case (ty, bodySubst) =>
+        let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), existType.ty)))).flatMap { case (bodyType, bodySubst) =>
           val subst = valueSubst.concat(bodySubst)
 
           TypeChecker.unify(subst, EmptySubst()).flatMap(unified => {
-            val replacedTy = unified.replace(ty)(idGen)
+            val replacedTy = unified.replace(bodyType)(idGen)
             if (replacedTy.hasType(existSize)) {
-              Left("result type of unpack has its size variable")
+              val newBodyType = Existential(replacedTy)
+              let.ty = newBodyType
+              Right((bodyType, subst.append(valueType, existType)))
+              // Left(TypeError("result type of unpack has its size variable"))
             }
             else {
-              let.ty = ty
-              Right((ty, subst/*.append(existTyVar, existSize)*/.append(valueType, existType)))
+              let.ty = bodyType
+              Right((bodyType, subst.append(valueType, existType)))
             }
           })
         }
@@ -127,7 +120,7 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
             Right((existType, valueSubst))
           }
           case _ => {
-            Left("value of pack must be array")
+            Left(TypeError("value of pack must be array"))
           }
         }
       })
@@ -136,22 +129,14 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
 
   override def visit(apply: Apply, env: ArgumentType): ResultType = {
     apply.callee.accept(this, env).flatMap { case (ty1, subst1) =>
-      // convert List[Either[E, X]] to Either[E, List[X]]
-      val args = apply.args
-          .map(_.accept(this, env))
-          .foldLeft(Right(List()): Either[String, List[(Type, Subst)]])((args, arg) =>
-            arg match {
-              case Right(t) => args.map(t :: _)
-              case Left(err) => Left(err)
-            }
-          )
+      val args = ListOfEitherTransposer.transpose(apply.args.map(_.accept(this, env)))
 
       args.map(args => {
-        val resultType = idGen.generateTypeVar()
+        val resultType = generateTypeVar(idGen)
         val argSubst = args.foldRight(EmptySubst(): Subst)((arg, subst) =>
           subst.concat(arg._2)
         )
-        val calleeType = args.reverse.foldRight(resultType: Type)((arg, ty) =>
+        val calleeType = args.foldRight(resultType: Type)((arg, ty) =>
           arg._1 ->: ty
         )
         apply.ty = resultType
@@ -161,7 +146,7 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
   }
 
   override def visit(id: Identifier, env: ArgumentType): ResultType = {
-    env.lookup(id.value).toRight(s"undefined identifier ${id.value}")
+    env.lookup(id.value).toRight(TypeError(s"undefined identifier ${id.value}"))
         .map(ty => {
           val idType  = ty.toType(idGen)
           id.ty = idType
@@ -231,7 +216,7 @@ class TypeReplacer(val subst: Subst) extends ExpressionVisitor[UniqueIdGenerator
 }
 
 object TypeChecker {
-  def unify(subst: Subst, result: Subst): Either[String, Subst] = {
+  def unify(subst: Subst, result: Subst): Either[LiftError, Subst] = {
 //    subst match {
 //      case SubstCons(t1, t2, next) => {
 //        println(s"unifying $t1 and $t2")
@@ -245,7 +230,7 @@ object TypeChecker {
           unify(next, result)
         }
         else if (ty2.hasType(ty1)) {
-          Left(s"$ty1 and $ty2: circular constraints")
+          Left(TypeError(s"$ty1 and $ty2: circular constraints"))
         }
         else {
           unify(next.replaceBy(ty1, ty2), result.replaceBy(ty1, ty2).append(ty1, ty2))
@@ -259,7 +244,7 @@ object TypeChecker {
           unify(next, result)
         }
         else {
-          Left(s"$ty1 and $ty2: unsolvable constraints")
+          Left(TypeError(s"$ty1 and $ty2: unsolvable constraints"))
         }
       }
       case SubstCons(Arrow(tyS1, tyS2), Arrow(tyT1, tyT2), next) => {
@@ -273,7 +258,7 @@ object TypeChecker {
           unify(itSubst, result)
         }
         else {
-          Left(s"$ty1 and $ty2: unsolvable constraints")
+          Left(TypeError(s"$ty1 and $ty2: unsolvable constraints"))
         }
       }
       case SubstCons(Array(it1, size1), Array(it2, size2), next) => {
@@ -293,7 +278,7 @@ object TypeChecker {
           unify(next, result)
         }
         else {
-          Left(s"$ty1 and $ty2: unsolvable constraints")
+          Left(TypeError(s"$ty1 and $ty2: unsolvable constraints"))
         }
       }
       case EmptySubst() => {
@@ -324,7 +309,7 @@ case class TypeScheme(val typeVars: List[TypeVar], val ty: Type) {
   // create identical type
   def toType(idGen: UniqueIdGenerator): Type = {
     val subst = typeVars.foldRight(EmptySubst() : Subst){ case (typeVar, subst) =>
-      SubstCons(typeVar, idGen.generateTypeVar(), subst)
+      SubstCons(typeVar, TypeVar(s"t${idGen.generateInt()}"), subst)
     }
     subst.replace(ty)(idGen)
   }

@@ -3,7 +3,7 @@ package pass
 import scala.collection._
 import scala.collection.immutable.List
 import ast._
-import structures._
+import lib._
 
 class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
   val stack = new mutable.ArrayStack[View]
@@ -82,6 +82,7 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
   }
 
   override def visit(node: Expression.Lambda, env: ArgumentType): ResultType = {
+    // FIXME: このタイミングでstack.popしてはいけない
     val env2 = node.args.foldRight(env.pushEnv(scala.Predef.Map[String, View]()))((id, env) => env.append(id.value, stack.pop()))
     node.body.accept(this, env2)
   }

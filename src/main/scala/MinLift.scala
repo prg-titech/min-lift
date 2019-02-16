@@ -17,6 +17,8 @@ object MinLift {
       //       norm <- Right(Normalizer.normalize(typedAst));
       ast <- Right(ast);
       _ <- Right(println(AstPrinter.print(ast)));
+      ast <- Preprocessor.kNormalize(ast);
+      ast <- Preprocessor.insertPackUnpack(ast);
       ast <- Preprocessor.normalize(ast);
       _ <- Right(println("=== preprocess ==="));
       _ <- Right(println(AstPrinter.print(ast)));

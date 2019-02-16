@@ -5,7 +5,7 @@ import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
 import ast._
 import pass.MemoryAllocator._
-import structures._
+import lib._
 
 class CodeGenerator extends ExpressionVisitor[Environment[CodeVariable], String] {
   val chunkSize = 5
