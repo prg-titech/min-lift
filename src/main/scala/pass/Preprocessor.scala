@@ -79,12 +79,22 @@ class KNormalizer extends ExpressionVisitor[Unit, Either[LiftError, Expression]]
     node.callee.accept(this, ()).flatMap(callee => {
       val args = ListOfEitherTransposer.transpose(node.args.map(_.accept(this, ())))
       args.map(args => {
-        val ids = args.map(arg => Expression.Identifier(s"temp${idGen.generateInt()}", false))
+        val ids = args.map(arg => {
+          if (arg.isInstanceOf[Expression.Apply]) {
+            val id = Expression.Identifier(s"temp${idGen.generateInt()}", false)
+            (id, Some((id, arg)))
+          }
+          else {
+            (arg, None)
+          }
+        })
         // TODO: Should I bind callee too?
-        val body = Expression.Apply(callee, ids)
+        val body = Expression.Apply(callee, ids.map(_._1))
 
-        ids.zip(args).foldRight(body : Expression)((arg, body) => {
-          Expression.Let(arg._1, arg._2, body, false)
+        ids.foldRight(body : Expression)((arg, body) => {
+          arg._2
+            .map(idValue => Expression.Let(idValue._1, idValue._2, body, false))
+            .getOrElse(body)
         })
       })
     })
