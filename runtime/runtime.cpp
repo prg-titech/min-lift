@@ -137,9 +137,13 @@ int main(int argc, char *argv[])
     }
 
     cl_ulong sum_exe_time = 0;
-    const int exe_count = profile ? 20 : 1;
+    const int exe_count = profile ? 1000 : 1;
 
-    for (int i = 0; i <= exe_count; i++) {
+    auto get_exe_time = [](const cl::Event &event) {
+      return event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+    };
+
+    for (int i = 0; i < exe_count; i++) {
       cl_ulong exe_time = 0;
 
       if (kernel_count >= 2) {
@@ -159,8 +163,6 @@ int main(int argc, char *argv[])
 
         cl::Buffer indices(context, CL_MEM_READ_WRITE, bitmap_size);
 
-        cl_ulong start_time = 0, end_time = 0;
-
         {
           int arg_i = 0;
           for (auto &xs : xses) {
@@ -178,7 +180,7 @@ int main(int argc, char *argv[])
               kernel, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
           event.wait();
 
-          start_time = event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+          exe_time = get_exe_time(event);
         }
 
         {
@@ -196,6 +198,7 @@ int main(int argc, char *argv[])
             queue.enqueueNDRangeKernel(
                 prefix_sum, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
             event.wait();
+            exe_time += get_exe_time(event);
           }
           if (steps % 2 == 0) {
             queue.enqueueCopyBuffer(bitmap_dup, indices, 0, 0, bitmap_size);
@@ -220,7 +223,7 @@ int main(int argc, char *argv[])
               kernel2, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
           event.wait();
 
-          end_time = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+          exe_time += get_exe_time(event);
         }
 
         if (kernel_count == 3) {
@@ -240,10 +243,8 @@ int main(int argc, char *argv[])
               *kernel3.get(), cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
           event.wait();
 
-          end_time = event.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+          exe_time += get_exe_time(event);
         }
-
-        exe_time = end_time - start_time;
       }
       else {
         cl::Kernel kernel(program, "KERNEL");
@@ -263,13 +264,10 @@ int main(int argc, char *argv[])
             kernel, cl::NullRange, cl::NDRange(std::ceil(N/* / static_cast<float>(CHUNK_SIZE)*/)), cl::NullRange, nullptr, &event);
         event.wait();
 
-        exe_time = event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+        exe_time = get_exe_time(event);
       }
 
-      // drop first time
-      if (i > 0) {
-        sum_exe_time += exe_time;
-      }
+      sum_exe_time += exe_time;
       // if (!quiet) {
       //   std::cout << "interval execution time: " << static_cast<double>(exe_time) * 1e-3f << " us" << std::endl;
       // }
