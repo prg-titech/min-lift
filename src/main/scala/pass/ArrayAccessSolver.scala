@@ -5,7 +5,127 @@ import scala.collection.immutable.List
 import ast._
 import lib._
 
-class ArrayAccessSolver extends ExpressionVisitor[Environment[View], Unit] {
+class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
+
+  var indexVarCount = 0
+  def makeIndexVar = {
+    indexVarCount += 1
+    indexVarCount
+  }
+
+  val funcs = lift.BuiltInFunctions.getFuncs(new UniqueIdGenerator())
+
+  def visit(node: Lift, env: ArgumentType): ResultType = {
+    val Expression.Lambda(ids, body) = node.body
+    val args = ids.map(id => MemoryView(id.value))
+    evalApplyLambda(node.body, args, env)
+  }
+
+  override def visit(node: Expression.Apply, env: ArgumentType): ResultType = {
+    val callee = node.callee.accept(this, env)
+    val args = node.args.map(_.accept(this, env))
+    val view = evalApply(callee, args, env)
+    node.view = view
+    view
+  }
+
+  def evalApply(callee: View, aargs: List[View], env: ArgumentType): ResultType = {
+    callee match {
+      case ExpressionView(callee) => {
+        evalApply(PartialApplyView(callee, aargs), List(), env)
+      }
+      case PartialApplyView(callee, pargs) => {
+        val args = pargs ::: aargs
+
+        callee match {
+          case Expression.Identifier(name, false) => {
+
+            funcs.lookup(name) match {
+              case Some(func) => {
+                val arw@Type.Arrow(_, _) = func.ty
+                val argCount = arw.args.size
+
+                if (argCount != args.size) {
+                  return PartialApplyView(callee, args)
+                }
+              }
+              case _ => {}
+            }
+
+            name match {
+              case "zip" => {
+                ZipView(args)
+              }
+              case "split" => {
+                val ExpressionView(Expression.Size(size)) = args(0)
+                SplitView(size, args(1))
+              }
+              case "mapSeq" | "mapLcl" | "mapWrg" | "mapGlb" => {
+                evalApply(args(0), List(ArrayAccessView(makeIndexVar, args(1))), env)
+              }
+              case "reduceSeq" => {
+                evalApply(args(1), List(NullView(), ArrayAccessView(makeIndexVar, args(2))), env)
+              }
+              case "filterSeq" | "filterGlb" => {
+                evalApply(args(0), List(ArrayAccessView(makeIndexVar, args(1))), env)
+              }
+              case "get1" | "get2" => {
+                val index = if (name == "get1") { 0 } else { 1 }
+                TupleAccessView(index, args(0))
+              }
+              case _ => {
+                NullView()
+              }
+            }
+          }
+          case lambda@Expression.Lambda(largs, body) => {
+            if (largs.size == args.size) {
+              evalApplyLambda(lambda, args, env)
+            }
+            else {
+              PartialApplyView(lambda, args)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  def evalApplyLambda(lambda: Expression.Lambda, args: List[View], env: ArgumentType): ResultType = {
+    val env2 = lambda.args.zip(args).foldRight(env.pushEnv(scala.Predef.Map[String, View]())){ case ((id, view), env) => {
+      env.append(id.value, view)
+    }}
+
+    lambda.body.accept(this, env2)
+  }
+
+  override def visit(node: Expression.Lambda, arg: ArgumentType): ResultType = {
+    PartialApplyView(node, List())
+  }
+
+  override def visit(node: Expression.Let, env: ArgumentType): ResultType = {
+    val env2 = env.pushEnv(Map(node.id.value -> node.value.accept(this, env)))
+    node.body.accept(this, env2)
+  }
+
+  override def visit(node: Expression.Pack, env: ArgumentType): ResultType = {
+    node.value.accept(this, env)
+  }
+
+  override def visit(node: Expression.Identifier, env: ArgumentType): ResultType = {
+    env.lookup(node.value).getOrElse(ExpressionView(node))
+  }
+
+  override def visit[C](node: Expression.Const[C], arg: ArgumentType): ResultType = {
+    ExpressionView(node)
+  }
+
+  override def visit(node: Expression.Size, arg: ArgumentType): ResultType = {
+    ExpressionView(node)
+  }
+}
+
+class ArrayAccessSolverOld extends ExpressionVisitor[Environment[View], Unit] {
   val stack = new mutable.ArrayStack[View]
 
   var indexVarCount = 0
@@ -137,6 +257,13 @@ case class TupleAccessView(index: Int, child: View) extends View {
 case class NullView() extends View {
   override def accept[A, R](visitor: ViewVisitor[A, R], arg: A): R = visitor.visit(this, arg)
 }
+// for constructing view
+case class PartialApplyView(callee: Expression, args: List[View]) extends View {
+  override def accept[A, R](visitor: ViewVisitor[A, R], arg: A): R = visitor.visit(this, arg)
+}
+case class ExpressionView(expr: Expression) extends View {
+  override def accept[A, R](visitor: ViewVisitor[A, R], arg: A): R = visitor.visit(this, arg)
+}
 
 trait ViewVisitor[A, R] {
   type ArgumentType = A
@@ -148,6 +275,8 @@ trait ViewVisitor[A, R] {
   def visit(view: ZipView, arg: A): R
   def visit(view: TupleAccessView, arg: A): R
   def visit(view: NullView, arg: A): R
+  def visit(view: PartialApplyView, arg: A): R
+  def visit(view: ExpressionView, arg: A): R
 }
 
 class ViewConstructor extends ViewVisitor[(List[ViewExpression], List[Int]), Either[String, (List[ViewExpression], List[Int])]] {
@@ -202,10 +331,10 @@ class ViewConstructor extends ViewVisitor[(List[ViewExpression], List[Int]), Eit
       view.child.accept(this, (arrayStack, view.index :: tupleStack))
   }
 
-  def visit(view: NullView, stacks: ArgumentType) = stacks match {
-    case (arrayStack, tupleStack) =>
-      Left("Encounter NullView.")
-  }
+  def visit(view: NullView, stacks: ArgumentType) = Left("Encounter NullView.")
+
+  def visit(view: PartialApplyView, stacks: ArgumentType) = Left("Encounter PartialApplyView.")
+  def visit(view: ExpressionView, stacks: ArgumentType) = Left("Encounter ExpressionView.")
 }
 
 object ViewConstructor {
