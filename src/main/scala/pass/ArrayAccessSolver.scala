@@ -7,11 +7,8 @@ import lib._
 
 class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
 
-  var indexVarCount = 0
-  def makeIndexVar = {
-    indexVarCount += 1
-    indexVarCount
-  }
+  val indexVarGen = new UniqueIdGenerator()
+  val interimResultVarGen = new UniqueIdGenerator()
 
   val funcs = lift.BuiltInFunctions.getFuncs(new UniqueIdGenerator())
 
@@ -61,17 +58,22 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
                 SplitView(size, args(1))
               }
               case "mapSeq" | "mapLcl" | "mapWrg" | "mapGlb" => {
-                evalApply(args(0), List(ArrayAccessView(makeIndexVar, args(1))), env)
+                evalApply(args(0), List(ArrayAccessView(indexVarGen.generateInt(), args(1))), env)
+                MemoryView(s"temp${interimResultVarGen.generateInt()}")
               }
               case "reduceSeq" => {
-                evalApply(args(1), List(NullView(), ArrayAccessView(makeIndexVar, args(2))), env)
+                evalApply(args(1), List(NullView(), ArrayAccessView(indexVarGen.generateInt(), args(2))), env)
               }
               case "filterSeq" | "filterGlb" => {
-                evalApply(args(0), List(ArrayAccessView(makeIndexVar, args(1))), env)
+                evalApply(args(0), List(ArrayAccessView(indexVarGen.generateInt(), args(1))), env)
+                MemoryView(s"temp${interimResultVarGen.generateInt()}")
               }
               case "get1" | "get2" => {
                 val index = if (name == "get1") { 0 } else { 1 }
                 TupleAccessView(index, args(0))
+              }
+              case "toGlobal" | "toLocal" | "toPrivate" => {
+                args(0)
               }
               case _ => {
                 NullView()
@@ -87,6 +89,9 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
             }
           }
         }
+      }
+      case NullView() => {
+        NullView()
       }
     }
   }
@@ -113,7 +118,15 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
   }
 
   override def visit(node: Expression.Identifier, env: ArgumentType): ResultType = {
-    env.lookup(node.value).getOrElse(ExpressionView(node))
+    env.lookup(node.value) match {
+      case Some(view) => {
+        node.view = view
+        view
+      }
+      case None => {
+        ExpressionView(node)
+      }
+    }
   }
 
   override def visit[C](node: Expression.Const[C], arg: ArgumentType): ResultType = {
@@ -129,7 +142,7 @@ class ArrayAccessSolverOld extends ExpressionVisitor[Environment[View], Unit] {
   val stack = new mutable.ArrayStack[View]
 
   var indexVarCount = 0
-  def makeIndexVar = {
+  def makeIndexVar() = {
     indexVarCount += 1
     indexVarCount
   }
@@ -159,14 +172,14 @@ class ArrayAccessSolverOld extends ExpressionVisitor[Environment[View], Unit] {
           }
           case "mapSeq" | "mapLcl" | "mapWrg" | "mapGlb" => {
             node.args.lift(1).foreach(_.accept(this, env))
-            val res = ArrayAccessView(makeIndexVar, stack.pop())
+            val res = ArrayAccessView(makeIndexVar(), stack.pop())
             node.view = res
             stack.push(res)
             node.args(0).accept(this, env)
           }
           case "reduceSeq" => {
             node.args.lift(2).foreach(_.accept(this, env))
-            val res = ArrayAccessView(makeIndexVar, stack.pop())
+            val res = ArrayAccessView(makeIndexVar(), stack.pop())
             stack.push(NullView())
             node.view = res
             stack.push(res)
@@ -174,7 +187,7 @@ class ArrayAccessSolverOld extends ExpressionVisitor[Environment[View], Unit] {
           }
           case "filterSeq" | "filterGlb" => {
             node.args.lift(1).foreach(_.accept(this, env))
-            val res = ArrayAccessView(makeIndexVar, stack.pop())
+            val res = ArrayAccessView(makeIndexVar(), stack.pop())
             node.view = res
             stack.push(res)
             node.args(0).accept(this, env)
@@ -345,7 +358,7 @@ object ViewConstructor {
           Right(s"$name[$expr]")
         }
         case _ => {
-          Left(s"Array stack of result must have one expr and one array variable.\narrayStack = ${arrayStack}")
+          Left(s"Array stack of result must have one expr and one array variable. arrayStack = ${arrayStack}")
         }
       }
     }

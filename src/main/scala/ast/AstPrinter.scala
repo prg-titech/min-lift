@@ -1,5 +1,7 @@
 package ast
 
+import pass.ViewConstructor
+
 class AstPrinter extends ExpressionVisitor[Unit, String] {
   def pad(str: String): String = {
     str.split("\n").map(l => s"  ${l}").mkString("\n")
@@ -19,7 +21,7 @@ class AstPrinter extends ExpressionVisitor[Unit, String] {
   override def visit(node: Expression.Apply, a: Unit): String = {
     val args = node.args.map(_.accept(this, ())).mkString("\n")
     s"""
-       |(${node.callee.accept(this, ())}\n${pad(args)}):${postfix(node)}""".stripMargin
+       |(${node.callee.accept(this, ())}\n${pad(args)}):${postfix(node)}(${if (node.view != null) { ViewConstructor.construct(node.view) } else {""}})""".stripMargin
   }
 
   override def visit(node: Expression.Lambda, a: Unit): String = {
@@ -29,8 +31,9 @@ class AstPrinter extends ExpressionVisitor[Unit, String] {
   }
 
   override def visit(node: Expression.Let, a: Unit): String = {
+    val let = if (node.unpack) { "unpack" } else { "pack" }
     s"""
-       |(let ${node.id.accept(this, ())} ${node.value.accept(this, ())}
+       |(${let} ${node.id.accept(this, ())} ${node.value.accept(this, ())}
        |  ${pad(node.body.accept(this, ()))}):${postfix(node)}
      """
   }
@@ -40,7 +43,7 @@ class AstPrinter extends ExpressionVisitor[Unit, String] {
   }
 
   override def visit(node: Expression.Identifier, a: Unit): String = {
-    s"${node.value}:${postfix(node)}"
+    s"${node.value}:${postfix(node)}(${if (node.view != null) { ViewConstructor.construct(node.view) } else {""}})"
   }
 
   override def visit[C](node: Expression.Const[C], a: Unit): String = {
