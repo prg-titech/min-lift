@@ -63,6 +63,16 @@ object Type {
       case ty@Arrow(_, _) => argType :: ty.args
       case _ => List(argType)
     }
+
+    // (a -> (b -> (c -> d))).reduce(2) => c -> d
+    def reduce(n: Int): Type = {
+      if (n <= 0) {
+        resultType
+      }
+      else {
+        reduce(n - 1)
+      }
+    }
   }
 
   case class TypeCon(val name: String, val innerTypes: Vector[Type]) extends Type {
