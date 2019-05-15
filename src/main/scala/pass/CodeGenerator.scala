@@ -14,7 +14,9 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
 
   var splitKernel = false
 
-  val tempVarGen  = new UniqueIdGenerator()
+  val indexVarGen = new UniqueIdGenerator("i")
+  val interimResultVarGen = new UniqueIdGenerator()
+  val tempVarGen  = new UniqueIdGenerator("v")
 
   val prefixSumKernel =
     """
@@ -225,13 +227,13 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 val GeneratedCode(prevCode, collection, ty) = args(1)
                 val Type.Array(inner, length) = ty
 
-                val vi = tempVarGen.generateString()
+                val vi = indexVarGen.generateString()
 
                 val funcType = calleeType.nthArg(0).asInstanceOf[Type.Arrow]
                 val GeneratedCode(funcCode, funcResult, elemTy) = generateApply(
                     args(0), List(GeneratedCode("", Variable(vi), funcType.nthArg(0))), funcType, addrSpace, env)
 
-                val resultType = calleeType.resultType
+                val resultType = calleeType.lastResultType
                 val (result, resultDecl) = generateResult(addrSpace, resultType)
 
                 val code = name match {

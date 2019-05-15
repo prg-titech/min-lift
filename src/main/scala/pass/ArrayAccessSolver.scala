@@ -7,7 +7,7 @@ import lib._
 
 class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
 
-  val indexVarGen = new UniqueIdGenerator()
+  val indexVarGen = new UniqueIdGenerator("i")
   val interimResultVarGen = new UniqueIdGenerator()
 
   val funcs = lift.BuiltInFunctions.getFuncs(new UniqueIdGenerator())
@@ -59,14 +59,14 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
               }
               case "mapSeq" | "mapLcl" | "mapWrg" | "mapGlb" => {
                 evalApply(args(0), List(ArrayAccessView(indexVarGen.generateInt(), args(1))), env)
-                MemoryView(s"temp${interimResultVarGen.generateInt()}")
+                MemoryView(interimResultVarGen.generateString())
               }
               case "reduceSeq" => {
                 evalApply(args(1), List(NullView(), ArrayAccessView(indexVarGen.generateInt(), args(2))), env)
               }
               case "filterSeq" | "filterGlb" => {
                 evalApply(args(0), List(ArrayAccessView(indexVarGen.generateInt(), args(1))), env)
-                MemoryView(s"temp${interimResultVarGen.generateInt()}")
+                MemoryView(interimResultVarGen.generateString())
               }
               case "get1" | "get2" => {
                 val index = if (name == "get1") { 0 } else { 1 }
