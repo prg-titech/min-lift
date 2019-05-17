@@ -8,7 +8,7 @@ class AstPrinter extends ExpressionVisitor[Unit, String] {
   }
 
   def postfix(node: Expression) = {
-    s"${node.ty}@${node.addressSpace}"
+    s"${node.ty}"
   }
 
   def visit(node: Lift, a: Unit): String = {

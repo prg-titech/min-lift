@@ -184,7 +184,7 @@ object Type {
 sealed abstract class Expression {
   // FIXME: don't use var
   var ty: Type = null
-  var addressSpace: Option[pass.MemoryAllocator.AddressSpace] = None
+  // var addressSpace: Option[pass.MemoryAllocator.AddressSpace] = None
   var view: pass.View = null
 
   def accept[A, R](visitor: ExpressionVisitor[A, R], arg: A): R

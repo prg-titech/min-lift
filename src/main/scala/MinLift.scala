@@ -26,7 +26,6 @@ object MinLift {
       _ <- Right(ArrayAccessSolver.solve(ast));
       _ <- Right(println("=== typedNorm ==="));
       _ <- Right(println(AstPrinter.print(ast)));
-      _ <- MemoryAllocator.inferAddressSpace(ast);
       _ <- Right(println("=== final ==="));
       _ <- Right(println(AstPrinter.print(ast)));
       code <- Right(CodeGenerator.generate(ast))

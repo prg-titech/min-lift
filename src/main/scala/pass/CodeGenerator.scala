@@ -4,7 +4,6 @@ import scala.collection._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
 import ast._
-import pass.MemoryAllocator._
 import lib._
 
 class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
@@ -17,6 +16,8 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
   val indexVarGen = new UniqueIdGenerator("i")
   val interimResultVarGen = new UniqueIdGenerator()
   val tempVarGen  = new UniqueIdGenerator("v")
+
+  val addressSpaceStack = new mutable.ArrayStack[AddressSpace]()
 
   val prefixSumKernel =
     """
@@ -41,7 +42,9 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
       |}
     """.stripMargin
 
-  def generateResult(addressSpace: Option[AddressSpace], ty: Type, dynamic: Boolean = false) = {
+  def generateResult(_addressSpace: Option[AddressSpace], ty: Type, dynamic: Boolean = false) = {
+    val addressSpace = addressSpaceStack.lift(0)
+
     val global = addressSpace == Some(GlobalMemory)
     val name = if (global) {
       "result"
@@ -63,7 +66,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
     if (global) {
       (resultVar, "")
     } else {
-      val mod   = addressSpace.getOrElse(MemoryAllocator.PrivateMemory).toCL
+      val mod   = addressSpace.getOrElse(PrivateMemory).toCL
       val id    = resultVar.code
       val tyStr = dereferenceTypeStr(ty.toCL)
       val arrayPostfix = ty match {
@@ -193,11 +196,12 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
 
   def visit(node: Expression.Apply, env: ArgumentType): ResultType = {
     val callee = node.callee.accept(this, env)
-    val args   = node.args.map(_.accept(this, env))
-    generateApply(callee, args, node.callee.ty.asInstanceOf[Type.Arrow], node.addressSpace, env)
+    generateApply(callee, node.args, node.callee.ty.asInstanceOf[Type.Arrow], None, env)
   }
 
-  def generateApply(callee: Code, aargs: List[Code], _calleeType: Type.Arrow, addrSpace: Option[AddressSpace], env: ArgumentType): ResultType = {
+  def generateApply(callee: Code, aargs: List[Expression], _calleeType: Type.Arrow, addrSpace: Option[AddressSpace], env: ArgumentType): ResultType = {
+    def g(expr: Expression) = expr.accept(this, env)
+
     callee match {
       case ExpressionCode(callee) => {
         generateApply(PartialApplyCode(callee, aargs), List(), _calleeType, addrSpace, env)
@@ -224,14 +228,16 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
 
             name match {
               case "mapSeq" | "mapGlb" | "mapWrg" | "mapLcl" => {
-                val GeneratedCode(prevCode, collection, ty) = args(1)
+                val GeneratedCode(prevCode, collection, ty) = g(args(1))
                 val Type.Array(inner, length) = ty
 
                 val vi = indexVarGen.generateString()
 
                 val funcType = calleeType.nthArg(0).asInstanceOf[Type.Arrow]
+                val viExpr = Expression.Identifier(vi, false)
+                viExpr.ty = funcType.nthArg(0)
                 val GeneratedCode(funcCode, funcResult, elemTy) = generateApply(
-                    args(0), List(GeneratedCode("", Variable(vi), funcType.nthArg(0))), funcType, addrSpace, env)
+                    g(args(0)), List(viExpr), funcType, addrSpace, env)
 
                 val resultType = calleeType.lastResultType
                 val (result, resultDecl) = generateResult(addrSpace, resultType)
@@ -405,12 +411,29 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 ""
               }
                  */
-              case "toGlobal" | "toLocal" | "toPrivate" => args(0)
+              case "toGlobal" | "toLocal" | "toPrivate" => {
+                val addressSpace = name match {
+                  case "toGlobal"  => GlobalMemory
+                  case "toLocal"   => LocalMemory
+                  case "toPrivate" => PrivateMemory
+                }
+
+                addressSpaceStack.push(addressSpace)
+
+                val code = g(args(0))
+
+                addressSpaceStack.pop()
+
+                code match {
+                  case p@PartialApplyCode(_, _) => AddressSpaceCode(p, addressSpace)
+                  case _ => code
+                }
+              }
               case op@("+" | "*" | "<" | ">") => {
                 val resultType = calleeType.lastResultType
 
-                val GeneratedCode(prevLeft, left, _) = args(0)
-                val GeneratedCode(prevRight, right, _) = args(1)
+                val GeneratedCode(prevLeft, left, _)   = g(args(0))
+                val GeneratedCode(prevRight, right, _) = g(args(1))
 
                 val (result, resultDecl) = generateResult(None, resultType)
 
@@ -428,13 +451,25 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
           }
           case lambda@Expression.Lambda(largs, body) => {
             if (largs.size == args.size) {
-              generateApplyLambda(lambda, args, env)
+              generateApplyLambda(lambda, args.map(g(_)), env)
             }
             else {
               // PartialApplyCode(lambda, args, ty.reduce(args.size - 1))
               PartialApplyCode(lambda, args)
             }
           }
+        }
+      }
+      case AddressSpaceCode(code, addressSpace) => {
+        addressSpaceStack.push(addressSpace)
+
+        val res = generateApply(code, aargs, _calleeType, addrSpace, env)
+
+        addressSpaceStack.pop()
+
+        res match {
+          case p@PartialApplyCode(_, _) => AddressSpaceCode(p, addressSpace)
+          case _ => res
         }
       }
     }
@@ -955,10 +990,18 @@ object CodeGenerator {
   def generate(node: Lift) = (new CodeGenerator).visit(node, EmptyEnvironment[Code]())
 }
 
+sealed abstract class AddressSpace(clModifier: String) {
+    def toCL: String = clModifier
+}
+case object PrivateMemory extends AddressSpace("private")
+case object LocalMemory extends AddressSpace("local")
+case object GlobalMemory extends AddressSpace("global")
+
 sealed abstract class Code
 case class GeneratedCode(code: String, result: Variable, ty: Type) extends Code
 case class ExpressionCode(expr: Expression) extends Code
-case class PartialApplyCode(callee: Expression, args: List[Code]) extends Code
+case class PartialApplyCode(callee: Expression, args: List[Expression]) extends Code
+case class AddressSpaceCode(code: PartialApplyCode, addressSpace: AddressSpace) extends Code
 
 class Variable(val code: String) {
   override def toString: String = code
