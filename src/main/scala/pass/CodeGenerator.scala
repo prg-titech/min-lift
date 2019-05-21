@@ -75,6 +75,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
       val tyStr = dereferenceTypeStr(ty.toCL)
       val arrayPostfix = ty match {
         case Type.Scalar(_)/* | Type.Array(_, Type.SizeDynamicInstance(_))*/ => ""
+        case Type.Array(_, Type.SizeConst(1)) => ""
         case _ => "[64]"
       }
       (resultVar, s"$mod $tyStr $id$arrayPostfix;")
@@ -201,15 +202,23 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
 
   def visit(node: Expression.Apply, env: ArgumentType): ResultType = {
     val callee = node.callee.accept(this, env)
-    generateApply(callee, node.args, node.callee.ty.asInstanceOf[Type.Arrow], None, env)
+    generateApply(callee, node.args, env)
   }
 
-  def generateApply(callee: Code, aargs: List[Expression], _calleeType: Type.Arrow, addrSpace: Option[AddressSpace], env: ArgumentType): ResultType = {
+  def generateApply(callee: Code, aargs: List[Expression], env: ArgumentType): ResultType = {
     def g(expr: Expression) = expr.accept(this, env)
+    def asGeneratedCode(code: Code) = {
+      code match {
+        case ExpressionCode(id@Expression.Identifier(value, _)) => {
+          GeneratedCode("", Variable(value), id.ty)
+        }
+        case _ => code
+      }
+    }
 
     callee match {
       case ExpressionCode(callee) => {
-        generateApply(PartialApplyCode(callee, aargs), List(), _calleeType, addrSpace, env)
+        generateApply(PartialApplyCode(callee, aargs), List(), env)
       }
       // case PartialApplyCode(callee, pargs, ty@Type.Arrow(_, _)) => {
       case PartialApplyCode(callee, pargs) => {
@@ -239,10 +248,10 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 val vi = indexVarGen.generateString()
 
                 val funcType = calleeType.nthArg(0).asInstanceOf[Type.Arrow]
-                val viExpr = Expression.Identifier(vi, false)
-                viExpr.ty = funcType.nthArg(0)
+                val elemExpr = Expression.Identifier(vi, false)
+                elemExpr.ty = funcType.nthArg(0)
                 val GeneratedCode(funcCode, funcResult, elemTy) = generateApply(
-                    g(args(0)), List(viExpr), funcType, addrSpace, env)
+                    g(args(0)), List(elemExpr), env)
 
                 val resultType = calleeType.lastResultType
                 val (result, resultDecl) = generateResult(resultType, true)
@@ -260,7 +269,6 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                        |}
                       """.stripMargin
                   }
-                    /*
                   case "mapGlb" => {
                     s"""
                        |$prevCode
@@ -268,154 +276,157 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                        |{
                        |  int $vi = get_global_id(0);
                        |  $funcCode
-                       |  ${result.assign(vi, resultCode)}
+                       |  ${result.assign(vi, funcResult)}
                        |}
                  """.stripMargin
                   }
                   case "mapWrg" => {
                     s"""
-                       |// view = ${node.view}, code = ${ViewConstructor.construct(node.view)}
                        |$prevCode
                        |$resultDecl
                        |{
                        |  int $vi = get_group_id(0);
                        |  $funcCode
-                       |  // ${result.assign(vi, resultCode)}
+                       |  ${result.assign(vi, funcResult)}
                        |}
                  """.stripMargin
                   }
                   case "mapLcl" => {
                     s"""
-                       |// view = ${node.view}, code = ${ViewConstructor.construct(node.view)}
                        |$prevCode
                        |$resultDecl
                        |{
                        |  int $vi = get_local_id(0);
                        |  $funcCode
-                       |  ${result.assign(vi, resultCode)}
+                       |  ${result.assign(vi, funcResult)}
                        |}
                  """.stripMargin
                   }
-                  */
                 }
                 GeneratedCode(code, result, resultType)
               }
-                /*
               case "reduceSeq" => {
-                val init = node.args(0)
-                val func = node.args(1)
-                var (collection, prevCode) = safeAcceptAndPop(node.args.lift(2))
+                val GeneratedCode(initCode, initResult, _) = asGeneratedCode(g(args(0)))
+                val GeneratedCode(prevCode, collection, ty) = asGeneratedCode(g(args(2)))
+                val Type.Array(inner, length) = ty
 
-                prevCode += init.accept(this, env) + "\n"
-                val initCode = varStack.pop()
+                val vi = indexVarGen.generateString()
+                val acc = indexVarGen.generateString()
 
-                val acc = CodeVariable("acc")
+                val funcType = calleeType.nthArg(1).asInstanceOf[Type.Arrow]
+                val accExpr  = Expression.Identifier(acc, false)
+                accExpr.ty   = funcType.nthArg(0)
+                val elemExpr = Expression.Identifier(vi, false)
+                elemExpr.ty  = funcType.nthArg(1)
+                val GeneratedCode(funcCode, funcResult, elemTy) = generateApply(
+                    g(args(1)), List(accExpr, elemExpr), env)
 
-                varStack.push(acc)
-                varStack.push(CodeVariable(ViewConstructor.construct(node.view).right.get))
-                val funcCode = func.accept(this, env)
-                val resultCode = varStack.pop().code
+                val resultType = calleeType.lastResultType
+                val (result, resultDecl) = generateResult(resultType, true)
 
-                val Type.Array(inner, length) = node.callee.ty.asInstanceOf[Type.Arrow].nthArg(2)
-
-                val vi = mkIndexVar
-
-                varStack.push(acc) // result
-
-                s"""
-                   |$prevCode
-                   |${init.ty.toCL} ${acc.code} = $initCode;
-                   |{
-                   |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
-                   |    $funcCode
-                   |    ${acc.code} = $resultCode;
-                   |  }
-                   |}
-            """.stripMargin
-              }
-              case "filterSeq" => {
-                val func = node.args(0)
-                var (collection, prevCode) = safeAcceptAndPop(node.args.lift(1))
-
-                val Type.Array(inner, length) = node.callee.ty.asInstanceOf[Type.Arrow].nthArg(1) // collection.ty
-
-                val resultType = node.ty
-
-                val vi = mkIndexVar
-
-                val input = CodeVariable(s"${collection.code}[$vi]")
-
-                varStack.push(input)
-                val funcCode = func.accept(this, env)
-                val resultCode = varStack.pop().code
-
-                val (result, resultDecl) = generateResult(node.addressSpace, resultType, true)
-
-                s"""
+                val code = s"""
                    |$prevCode
                    |$resultDecl
-                   |int ${result.size("len")} = 0;
+                   |$initCode
+                   |${accExpr.ty.toCL} $acc = $initResult;
                    |{
-                   |  int idx = 0;
                    |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
                    |    $funcCode
-                   |    if ($resultCode) {
-                   |      ${result.assign("idx++", input)}
-                   |    }
+                   |    $acc = $funcResult;
                    |  }
-                   |  ${result.assignSize("idx")}
+                   |  $result = $acc;
                    |}
-            """.stripMargin
+                """.stripMargin
+
+                GeneratedCode(code, result, resultType)
               }
-              case "filterGlb" => {
+              /*
+            case "filterSeq" => {
+              val func = node.args(0)
+              var (collection, prevCode) = safeAcceptAndPop(node.args.lift(1))
 
-                splitKernel = true
+              val Type.Array(inner, length) = node.callee.ty.asInstanceOf[Type.Arrow].nthArg(1) // collection.ty
 
-                val func = node.args(0)
-                var (collection, prevCode) = safeAcceptAndPop(node.args.lift(1))
+              val resultType = node.ty
 
-                val Type.Array(inner, length) = node.callee.ty.asInstanceOf[Type.Arrow].nthArg(1) // collection.ty
+              val vi = mkIndexVar
 
-                val vi = mkIndexVar
+              val input = CodeVariable(s"${collection.code}[$vi]")
 
-                val input = CodeVariable(s"${collection.code}[$vi]")
+              varStack.push(input)
+              val funcCode = func.accept(this, env)
+              val resultCode = varStack.pop().code
 
-                varStack.push(input)
-                val funcCode = func.accept(this, env)
-                val resultCode = varStack.pop().code
+              val (result, resultDecl) = generateResult(node.addressSpace, resultType, true)
 
-                val resultType = node.ty
+              s"""
+                 |$prevCode
+                 |$resultDecl
+                 |int ${result.size("len")} = 0;
+                 |{
+                 |  int idx = 0;
+                 |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
+                 |    $funcCode
+                 |    if ($resultCode) {
+                 |      ${result.assign("idx++", input)}
+                 |    }
+                 |  }
+                 |  ${result.assignSize("idx")}
+                 |}
+          """.stripMargin
+            }
+            case "filterGlb" => {
 
-                val (result, resultDecl) = generateResult(node.addressSpace, resultType, true)
+              splitKernel = true
 
-                s"""
-                   |int $vi = get_global_id(0);
-                   |$funcCode
-                   |bitmap[$vi] = $resultCode;
-                   |
-               |// ---
-                   |
-               |int $vi = get_global_id(0);
-                   |if (bitmap[$vi]) {
-                   |  ${result.assign(s"indices[$vi] - 1", input)}
-                   |}
-                   |${result.assignSize(s"indices[${length.toCL} - 1]")}
-                   |
-               |// ---
-             """.stripMargin
-              }
+              val func = node.args(0)
+              var (collection, prevCode) = safeAcceptAndPop(node.args.lift(1))
+
+              val Type.Array(inner, length) = node.callee.ty.asInstanceOf[Type.Arrow].nthArg(1) // collection.ty
+
+              val vi = mkIndexVar
+
+              val input = CodeVariable(s"${collection.code}[$vi]")
+
+              varStack.push(input)
+              val funcCode = func.accept(this, env)
+              val resultCode = varStack.pop().code
+
+              val resultType = node.ty
+
+              val (result, resultDecl) = generateResult(node.addressSpace, resultType, true)
+
+              s"""
+                 |int $vi = get_global_id(0);
+                 |$funcCode
+                 |bitmap[$vi] = $resultCode;
+                 |
+             |// ---
+                 |
+             |int $vi = get_global_id(0);
+                 |if (bitmap[$vi]) {
+                 |  ${result.assign(s"indices[$vi] - 1", input)}
+                 |}
+                 |${result.assignSize(s"indices[${length.toCL} - 1]")}
+                 |
+             |// ---
+           """.stripMargin
+            }
+               */
               case "join" => {
-                node.args(0).accept(this, env)
+                g(args(0))
               }
-              case "split" | "zip" => {
-                // do nothing
-                ""
+              case "split" => {
+                g(args(1))
+              }
+              case "zip" => {
+                g(args(0))
               }
               case "get1" | "get2" => {
-                varStack.push(CodeVariable(ViewConstructor.construct(node.view).right.get))
-                ""
+                val node = args(0)
+                val code = ViewConstructor.construct(node.view).right.get
+                GeneratedCode("", Variable(code), node.ty)
               }
-                 */
               case "toGlobal" | "toLocal" | "toPrivate" => {
                 val addressSpace = name match {
                   case "toGlobal"  => GlobalMemory
@@ -437,8 +448,8 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
               case op@("+" | "*" | "<" | ">") => {
                 val resultType = calleeType.lastResultType
 
-                val GeneratedCode(prevLeft, left, _)   = g(args(0))
-                val GeneratedCode(prevRight, right, _) = g(args(1))
+                val GeneratedCode(prevLeft, left, _)   = asGeneratedCode(g(args(0)))
+                val GeneratedCode(prevRight, right, _) = asGeneratedCode(g(args(1)))
 
                 val (result, resultDecl) = generateResult(resultType, false)
 
@@ -468,7 +479,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
       case AddressSpaceCode(code, addressSpace) => {
         addressSpaceStack.push(addressSpace)
 
-        val res = generateApply(code, aargs, _calleeType, addrSpace, env)
+        val res = generateApply(code, aargs, env)
 
         addressSpaceStack.pop()
 
@@ -525,6 +536,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
         }
       })
       // .map(_ => GeneratedCode("", Variable(node.value), node.ty))
+      // .getOrElse(GeneratedCode("", Variable(node.value), node.ty))
       .getOrElse(ExpressionCode(node))
   }
 
