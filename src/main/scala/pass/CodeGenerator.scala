@@ -42,8 +42,12 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
       |}
     """.stripMargin
 
-  def generateResult(_addressSpace: Option[AddressSpace], ty: Type, dynamic: Boolean = false) = {
-    val addressSpace = addressSpaceStack.lift(0)
+  def generateResult(ty: Type, useAddressSpace: Boolean, dynamic: Boolean = false) = {
+    val addressSpace = if (useAddressSpace) {
+      addressSpaceStack.lift(0)
+    } else {
+      Some(PrivateMemory)
+    }
 
     val global = addressSpace == Some(GlobalMemory)
     val name = if (global) {
@@ -107,7 +111,8 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
     val resultType = body.ty.toCL.takeWhile(_ != '*') + "*";
 
     val args = params.map(param => GeneratedCode("", Variable(param.value), param.ty))
-    val GeneratedCode(bodyCode, result, _) = generateApplyLambda(node.body, args, env)
+    val res = generateApplyLambda(node.body, args, env)
+    val GeneratedCode(bodyCode, result, _) = res
 
     val postfixCode = (result match {
       case Variable("result") => ""
@@ -240,7 +245,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                     g(args(0)), List(viExpr), funcType, addrSpace, env)
 
                 val resultType = calleeType.lastResultType
-                val (result, resultDecl) = generateResult(addrSpace, resultType)
+                val (result, resultDecl) = generateResult(resultType, true)
 
                 val code = name match {
                   case "mapSeq" => {
@@ -435,7 +440,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 val GeneratedCode(prevLeft, left, _)   = g(args(0))
                 val GeneratedCode(prevRight, right, _) = g(args(1))
 
-                val (result, resultDecl) = generateResult(None, resultType)
+                val (result, resultDecl) = generateResult(resultType, false)
 
                 val code = s"""
                    |$resultDecl
