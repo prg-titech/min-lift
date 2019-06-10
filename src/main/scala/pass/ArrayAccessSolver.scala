@@ -73,7 +73,7 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
                 TupleAccessView(index, args(0))
               }
               case "toGlobal" | "toLocal" | "toPrivate" => {
-                args(0)
+                evalApply(args(0), List(args(1)), env)
               }
               case _ => {
                 NullView()
@@ -245,13 +245,18 @@ class ViewConstructor extends ViewVisitor[(List[ViewExpression], List[Int]), Eit
 
 object ViewConstructor {
   def construct(view: View) = {
-    view.accept(new ViewConstructor, (List(), List())).flatMap{ case (arrayStack, _) =>
-      arrayStack match {
-        case ViewExpression.ArrayVariable(name) :: expr :: _ => {
-          Right(s"$name[$expr]")
-        }
-        case _ => {
-          Left(s"Array stack of result must have one expr and one array variable. arrayStack = ${arrayStack}")
+    if (view == null) {
+      Left(s"view is null")
+    }
+    else {
+      view.accept(new ViewConstructor, (List(), List())).flatMap { case (arrayStack, _) =>
+        arrayStack match {
+          case ViewExpression.ArrayVariable(name) :: expr :: _ => {
+            Right(s"$name[$expr]")
+          }
+          case _ => {
+            Left(s"Array stack of result must have one expr and one array variable. arrayStack = ${arrayStack}")
+          }
         }
       }
     }

@@ -18,6 +18,9 @@ profiler: profiler.cpp
 test: runtime
 	@sh run-artifacts.sh ../examples
 
+clean-cl:
+	rm ../examples/*.cl
+
 .PHONY: clean
 clean:
 	rm -f runtime profiler

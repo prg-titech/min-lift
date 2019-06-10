@@ -202,10 +202,10 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
 
   def visit(node: Expression.Apply, env: ArgumentType): ResultType = {
     val callee = node.callee.accept(this, env)
-    generateApply(callee, node.args, env)
+    generateApply(callee, node.args.map(_.accept(this, env)), env)
   }
 
-  def generateApply(callee: Code, aargs: List[Expression], env: ArgumentType): ResultType = {
+  def generateApply(callee: Code, /*aargsExpr: List[Expression]*/ aargs: List[Code], env: ArgumentType): ResultType = {
     def g(expr: Expression) = expr.accept(this, env)
     def asGeneratedCode(code: Code) = {
       code match {
@@ -215,6 +215,8 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
         case _ => code
       }
     }
+
+    // val aargs = aargsExpr.map(g(_))
 
     callee match {
       case ExpressionCode(callee) => {
@@ -242,7 +244,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
 
             name match {
               case "mapSeq" | "mapGlb" | "mapWrg" | "mapLcl" => {
-                val GeneratedCode(prevCode, collection, ty) = g(args(1))
+                val GeneratedCode(prevCode, collection, ty) = args(1)
                 val Type.Array(inner, length) = ty
 
                 val vi = indexVarGen.generateString()
@@ -251,7 +253,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 val elemExpr = Expression.Identifier(vi, false)
                 elemExpr.ty = funcType.nthArg(0)
                 val GeneratedCode(funcCode, funcResult, elemTy) = generateApply(
-                    g(args(0)), List(elemExpr), env)
+                    args(0), List(ExpressionCode(elemExpr)), env)
 
                 val resultType = calleeType.lastResultType
                 val (result, resultDecl) = generateResult(resultType, true)
@@ -306,8 +308,8 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 GeneratedCode(code, result, resultType)
               }
               case "reduceSeq" => {
-                val GeneratedCode(initCode, initResult, _) = asGeneratedCode(g(args(0)))
-                val GeneratedCode(prevCode, collection, ty) = asGeneratedCode(g(args(2)))
+                val GeneratedCode(initCode, initResult, _) = asGeneratedCode(args(0))
+                val GeneratedCode(prevCode, collection, ty) = asGeneratedCode(args(2))
                 val Type.Array(inner, length) = ty
 
                 val vi = indexVarGen.generateString()
@@ -319,7 +321,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 val elemExpr = Expression.Identifier(vi, false)
                 elemExpr.ty  = funcType.nthArg(1)
                 val GeneratedCode(funcCode, funcResult, elemTy) = generateApply(
-                    g(args(1)), List(accExpr, elemExpr), env)
+                    args(1), List(ExpressionCode(accExpr), ExpressionCode(elemExpr)), env)
 
                 val resultType = calleeType.lastResultType
                 val (result, resultDecl) = generateResult(resultType, true)
@@ -414,18 +416,19 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
             }
                */
               case "join" => {
-                g(args(0))
+                args(0)
               }
               case "split" => {
-                g(args(1))
+                args(1)
               }
               case "zip" => {
-                g(args(0))
+                args(0)
               }
               case "get1" | "get2" => {
                 val node = args(0)
-                val code = ViewConstructor.construct(node.view).right.get
-                GeneratedCode("", Variable(code), node.ty)
+                // val code = ViewConstructor.construct(node.view).right.get
+                // GeneratedCode("", Variable(code), node.ty)
+                GeneratedCode("", Variable("unimplemented"), Type.Int)
               }
               case "toGlobal" | "toLocal" | "toPrivate" => {
                 val addressSpace = name match {
@@ -436,7 +439,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
 
                 addressSpaceStack.push(addressSpace)
 
-                val code = g(args(0))
+                val code = generateApply(args(0), List(args(1)), env)
 
                 addressSpaceStack.pop()
 
@@ -448,8 +451,8 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
               case op@("+" | "*" | "<" | ">") => {
                 val resultType = calleeType.lastResultType
 
-                val GeneratedCode(prevLeft, left, _)   = asGeneratedCode(g(args(0)))
-                val GeneratedCode(prevRight, right, _) = asGeneratedCode(g(args(1)))
+                val GeneratedCode(prevLeft, left, _)   = asGeneratedCode(args(0))
+                val GeneratedCode(prevRight, right, _) = asGeneratedCode(args(1))
 
                 val (result, resultDecl) = generateResult(resultType, false)
 
@@ -467,7 +470,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
           }
           case lambda@Expression.Lambda(largs, body) => {
             if (largs.size == args.size) {
-              generateApplyLambda(lambda, args.map(g(_)), env)
+              generateApplyLambda(lambda, args, env)
             }
             else {
               // PartialApplyCode(lambda, args, ty.reduce(args.size - 1))
@@ -563,7 +566,8 @@ case object GlobalMemory extends AddressSpace("global")
 sealed abstract class Code
 case class GeneratedCode(code: String, result: Variable, ty: Type) extends Code
 case class ExpressionCode(expr: Expression) extends Code
-case class PartialApplyCode(callee: Expression, args: List[Expression]) extends Code
+// case class PartialApplyCode(callee: Expression, args: List[Expression]) extends Code
+case class PartialApplyCode(callee: Expression, args: List[Code]) extends Code
 case class AddressSpaceCode(code: PartialApplyCode, addressSpace: AddressSpace) extends Code
 
 class Variable(val code: String) {
