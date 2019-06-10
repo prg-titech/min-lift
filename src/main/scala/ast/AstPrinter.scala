@@ -8,7 +8,21 @@ class AstPrinter extends ExpressionVisitor[Unit, String] {
   }
 
   def postfix(node: Expression) = {
-    s"${node.ty}"
+    if (node.ty != null) {
+      s"${node.ty}"
+    }
+    else {
+      ""
+    }
+  }
+
+  def view(node: Expression) = {
+    if (node.view != null) {
+      s"(${ViewConstructor.construct(node.view)})"
+    }
+    else {
+      ""
+    }
   }
 
   def visit(node: Lift, a: Unit): String = {
@@ -21,7 +35,7 @@ class AstPrinter extends ExpressionVisitor[Unit, String] {
   override def visit(node: Expression.Apply, a: Unit): String = {
     val args = node.args.map(_.accept(this, ())).mkString("\n")
     s"""
-       |(${node.callee.accept(this, ())}\n${pad(args)}):${postfix(node)}(${if (node.view != null) { ViewConstructor.construct(node.view) } else {""}})""".stripMargin
+       |(${node.callee.accept(this, ())}\n${pad(args)}):${postfix(node)}${view(node)}""".stripMargin
   }
 
   override def visit(node: Expression.Lambda, a: Unit): String = {
@@ -43,7 +57,7 @@ class AstPrinter extends ExpressionVisitor[Unit, String] {
   }
 
   override def visit(node: Expression.Identifier, a: Unit): String = {
-    s"${node.value}:${postfix(node)}(${if (node.view != null) { ViewConstructor.construct(node.view) } else {""}})"
+    s"${node.value}:${postfix(node)}${view(node)}"
   }
 
   override def visit[C](node: Expression.Const[C], a: Unit): String = {
