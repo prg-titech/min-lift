@@ -226,13 +226,10 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
       }
     }
 
-    // val aargs = aargsExpr.map(g(_))
-
     callee match {
       case ExpressionCode(callee) => {
         generateApply(PartialApplyCode(callee, aargs), List(), env)
       }
-      // case PartialApplyCode(callee, pargs, ty@Type.Arrow(_, _)) => {
       case PartialApplyCode(callee, pargs) => {
         val args = pargs ::: aargs
 
@@ -479,7 +476,6 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
               generateApplyLambda(lambda, args, env)
             }
             else {
-              // PartialApplyCode(lambda, args, ty.reduce(args.size - 1))
               PartialApplyCode(lambda, args)
             }
           }
@@ -516,20 +512,6 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
     val generatedValue = node.value.accept(this, env)
     val env2 = env.pushEnv(Map(node.id.value -> generatedValue))
     node.body.accept(this, env2)
-
-    /*
-    val GeneratedCode(valueCode, value, _) = generatedValue
-    val valueDecl = varDecl(node.id, node.value.ty, node.value.addressSpace, value)
-
-    val GeneratedCode(bodyCode, result, _) = node.body.accept(this, env2)
-
-    val code = s"""
-       |$valueCode
-       |$valueDecl
-       |$bodyCode
-     """.stripMargin
-    GeneratedCode(code, result, node.ty)
-     */
   }
 
   def visit(node: Expression.Pack, env: ArgumentType): ResultType = {
@@ -544,8 +526,6 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
           case Left(err) => value
         }
       })
-      // .map(_ => GeneratedCode("", Variable(node.value), node.ty))
-      // .getOrElse(GeneratedCode("", Variable(node.value), node.ty))
       .getOrElse(ExpressionCode(node))
   }
 
@@ -572,7 +552,6 @@ case object GlobalMemory extends AddressSpace("global")
 sealed abstract class Code
 case class GeneratedCode(code: String, result: Variable, ty: Type) extends Code
 case class ExpressionCode(expr: Expression) extends Code
-// case class PartialApplyCode(callee: Expression, args: List[Expression]) extends Code
 case class PartialApplyCode(callee: Expression, args: List[Code]) extends Code
 case class AddressSpaceCode(code: PartialApplyCode, addressSpace: AddressSpace) extends Code
 
