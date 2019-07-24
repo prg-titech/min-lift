@@ -8,7 +8,7 @@ import lib._
 class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
 
   val indexVarGen = new UniqueIdGenerator("i")
-  val interimResultVarGen = new UniqueIdGenerator()
+  val interimResultVarGen = new UniqueIdGenerator("temp")
 
   val funcs = lift.BuiltInFunctions.getFuncs(new UniqueIdGenerator())
 

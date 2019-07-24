@@ -20,7 +20,7 @@ sealed abstract class Type {
 object Type {
   case class TypeVar(val name: String) extends Type {
     override def toString: String = s"<${name}>"
-    override def toCL: String = ???
+    override def toCL: String = s"$name"
 
     def hasType(ty: Type): Boolean = ty == this
     def replaceBy(from: Type.TypeVar, to: Type): Type = {

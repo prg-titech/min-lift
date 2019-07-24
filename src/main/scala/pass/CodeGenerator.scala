@@ -14,7 +14,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
   var splitKernel = false
 
   val indexVarGen = new UniqueIdGenerator("i")
-  val interimResultVarGen = new UniqueIdGenerator()
+  val interimResultVarGen = new UniqueIdGenerator("temp")
   val tempVarGen  = new UniqueIdGenerator("v")
 
   val addressSpaceStack = new mutable.ArrayStack[AddressSpace]()
@@ -42,7 +42,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
       |}
     """.stripMargin
 
-  def generateResult(ty: Type, useAddressSpace: Boolean) = {
+  def generateResult(ty: Type, useAddressSpace: Boolean, isArray: Boolean) = {
     val addressSpace = if (useAddressSpace) {
       addressSpaceStack.lift(0)
     } else {
@@ -63,13 +63,17 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
 
       if (isScalar) { "result[0]" } else { "result" }
     } else {
-      tempVarGen.generateString()
+      if (isArray) {
+        interimResultVarGen.generateString()
+      } else {
+        tempVarGen.generateString()
+      }
     }
 
     val resultVar = if (dynamic) {
       val Type.Existential(Type.Array(_, size)) = ty
       val sizeStr = size match {
-        case Type.TypeVar(_) => "ary_size"
+        case Type.TypeVar(name) => name
         case _ => size.toCL
       }
       DynArrayVariable(name, Variable(sizeStr))
@@ -136,8 +140,8 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
         }
       }
     }) + "\n" + (body.ty match {
-      case Type.Existential(Type.Array(_, _)) => {
-        "*result_size = ary_size;"
+      case Type.Existential(Type.Array(_, size)) => {
+        s"*result_size = ${size.toCL};"
       }
       case Type.Array(_, size) => {
         s"*result_size = ${size.toCL};"
@@ -263,7 +267,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                     args(0), List(ExpressionCode(elemExpr)), env)
 
                 val resultType = calleeType.lastResultType
-                val (result, resultDecl) = generateResult(resultType, true)
+                val (result, resultDecl) = generateResult(resultType, true, true)
 
                 val code = name match {
                   case "mapSeq" => {
@@ -331,7 +335,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                     args(1), List(ExpressionCode(accExpr), ExpressionCode(elemExpr)), env)
 
                 val resultType = calleeType.lastResultType
-                val (result, resultDecl) = generateResult(resultType, true)
+                val (result, resultDecl) = generateResult(resultType, true, false)
 
                 val code = s"""
                    |$prevCode
@@ -362,7 +366,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                     args(0), List(ExpressionCode(elemExpr)), env)
 
                 val resultType = calleeType.lastResultType
-                val (result, resultDecl) = generateResult(resultType, true)
+                val (result, resultDecl) = generateResult(resultType, true, true)
 
                 val code = s"""
                    |$prevCode
@@ -398,7 +402,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                     args(0), List(ExpressionCode(elemExpr)), env)
 
                 val resultType = calleeType.lastResultType
-                val (result, resultDecl) = generateResult(resultType, true)
+                val (result, resultDecl) = generateResult(resultType, true, true)
 
                 val code = s"""
                    |int $vi = get_global_id(0);
@@ -411,6 +415,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                    |if (bitmap[$vi]) {
                    |  ${result.assign(s"indices[$vi] - 1", Variable(s"${collection.code}[$vi]"))}
                    |}
+                   |int ${result.size("len")} = 0;
                    |${result.assignSize(s"indices[${length.toCL} - 1]")}
                    |
                    |// ---
@@ -457,7 +462,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 val GeneratedCode(prevLeft, left, _)   = asGeneratedCode(args(0))
                 val GeneratedCode(prevRight, right, _) = asGeneratedCode(args(1))
 
-                val (result, resultDecl) = generateResult(resultType, false)
+                val (result, resultDecl) = generateResult(resultType, false, false)
 
                 val code = s"""
                    |$resultDecl
@@ -509,7 +514,19 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
   }
 
   def visit(node: Expression.Let, env: ArgumentType): ResultType = {
-    val generatedValue = node.value.accept(this, env)
+    val generatedValue_ = node.value.accept(this, env)
+
+    val generatedValue = if (node.unpack) {
+      generatedValue_ match {
+        case GeneratedCode(code, result, Type.Existential(ty)) => {
+          GeneratedCode(code, result, ty)
+        }
+        case v@_ => v
+      }
+    } else {
+      generatedValue_
+    }
+
     val env2 = env.pushEnv(Map(node.id.value -> generatedValue))
     node.body.accept(this, env2)
   }
@@ -573,7 +590,7 @@ case class DynArrayVariable(c: String, sizeVar: Variable) extends Variable(c) {
       s"${sizeVar.code} = $size;"
     }
     else {
-      s"int ${sizeVar.code} = $size;"
+      s"${sizeVar.code} = $size;"
     }
   }
   override def size(alt: String): String = sizeVar.toString
