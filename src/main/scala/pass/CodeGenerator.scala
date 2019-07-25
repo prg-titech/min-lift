@@ -261,13 +261,17 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 val vi = indexVarGen.generateString()
 
                 val funcType = calleeType.nthArg(0).asInstanceOf[Type.Arrow]
-                val elemExpr = Expression.Identifier(vi, false)
-                elemExpr.ty = funcType.nthArg(0)
                 val GeneratedCode(funcCode, funcResult, elemTy) = generateApply(
-                    args(0), List(ExpressionCode(elemExpr)), env)
+                      args(0), List(GeneratedCode("", Variable(vi), funcType.nthArg(0))), env)
 
                 val resultType = calleeType.lastResultType
                 val (result, resultDecl) = generateResult(resultType, true, true)
+
+                val assignCode = if (funcType.lastResultType.isScalar) {
+                  result.assign(vi, funcResult)
+                } else {
+                  ""
+                }
 
                 val code = name match {
                   case "mapSeq" => {
@@ -277,7 +281,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                        |{
                        |  for (int $vi = 0; $vi < ${collection.size(length.toCL)}; $vi++) {
                        |    $funcCode
-                       |    ${result.assign(vi, funcResult)}
+                       |    $assignCode
                        |  }
                        |}
                       """.stripMargin
@@ -289,7 +293,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                        |{
                        |  int $vi = get_global_id(0);
                        |  $funcCode
-                       |  ${result.assign(vi, funcResult)}
+                       |  $assignCode
                        |}
                  """.stripMargin
                   }
@@ -300,7 +304,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                        |{
                        |  int $vi = get_group_id(0);
                        |  $funcCode
-                       |  ${result.assign(vi, funcResult)}
+                       |  $assignCode
                        |}
                  """.stripMargin
                   }
@@ -311,7 +315,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                        |{
                        |  int $vi = get_local_id(0);
                        |  $funcCode
-                       |  ${result.assign(vi, funcResult)}
+                       |  $assignCode
                        |}
                  """.stripMargin
                   }

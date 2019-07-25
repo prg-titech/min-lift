@@ -16,6 +16,13 @@ sealed abstract class Type {
   def replaceBy(from: Type.TypeVar, to: Type): Type
 
   def representativeType = this
+
+  def isScalar: Boolean = {
+    this match {
+      case Type.Scalar(_) => true
+      case _ => false
+    }
+  }
 }
 object Type {
   case class TypeVar(val name: String) extends Type {
