@@ -5,9 +5,11 @@ import errors._
 import lib._
 
 class Preprocessor extends ExpressionVisitor[Unit, Either[LiftError, Expression]] {
+  val compVarGen = new UniqueIdGenerator("comp")
+
   override def visit(node: Expression.Apply, a: Unit): ResultType = {
     node.callee match {
-      // (o f g h ... x) -> (f (g (h ... x)))
+      // (o f g h ...) -> λx. (f (g (h ... x)))
       case Expression.Identifier("o", false) => {
         if (node.args.length < 1) {
           Left(PreprocessError("composition 'o' needs at least one argument"))
@@ -16,10 +18,13 @@ class Preprocessor extends ExpressionVisitor[Unit, Either[LiftError, Expression]
           node.args(0).accept(this, ())
         }
         else { // node.args.length >= 2
-          val newApply = node.args.dropRight(1).foldRight(node.args.last)((arg, app) => {
+          val x = compVarGen.generateString()
+          val newApply = node.args.foldRight(Expression.Identifier(x, false): Expression)((arg, app) => {
             Expression.Apply(arg, List(app))
           })
-          newApply.accept(this, ())
+          val newLambda = Expression.Lambda(
+            List(Expression.Identifier(x, true)), newApply)
+          newLambda.accept(this, ())
         }
       }
       // (((f x) y) z) -> ((f x) y z) -> (f x y z)
