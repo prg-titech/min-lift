@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
 {
   cxxopts::Options optp("runtime", "A runtime of min-lift");
   optp.add_options()
-    ("f,file", "Kernel file name", cxxopts::value<std::string>())
+    ("k,kernel", "Kernel file name", cxxopts::value<std::string>())
     ("d,data", "Input data file(s) name", cxxopts::value<std::string>())
     ("q,quiet", "Be queit", cxxopts::value<bool>()->default_value("false"))
     ("c,check", "Only checks weather kernel can be compiled", cxxopts::value<bool>()->default_value("false"))
@@ -29,7 +29,7 @@ int main(int argc, char *argv[])
 
   try {
     auto opts = optp.parse(argc, argv);
-    const std::string file = opts["file"].as<std::string>();
+    const std::string file = opts["kernel"].as<std::string>();
     const bool quiet = opts["quiet"].count();
     const bool profile = opts["profile"].count();
 
@@ -227,6 +227,9 @@ int main(int argc, char *argv[])
         }
 
         if (kernel_count == 3) {
+          int raw_result_size = 0;
+          queue.enqueueReadBuffer(result_size, CL_TRUE, 0, sizeof(int), reinterpret_cast<void*>(&raw_result_size));
+
           queue.enqueueCopyBuffer(result, xses[0], 0, 0, sizeof(float) * N);
           int arg_i = 0;
           for (auto &xs : xses) {
@@ -235,7 +238,7 @@ int main(int argc, char *argv[])
           }
           kernel3->setArg(arg_i++, result);
           kernel3->setArg(arg_i++, result_size);
-          cl_int cl_N = N;
+          cl_int cl_N = raw_result_size;
           kernel3->setArg(arg_i, sizeof(cl_N), &cl_N);
 
           cl::Event event;

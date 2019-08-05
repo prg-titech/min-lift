@@ -10,7 +10,7 @@ for path in `ls $1/*.cl`; do
     input_data="$input_data,min-data"
   done
 
-  if ! ./runtime -q --file $path -d $input_data > $output ; then
+  if ! ./runtime -q --kernel $path -d $input_data > $output ; then
     echo "compilation failed at $path"
     echo "---------------------------------"
     has_error=1
