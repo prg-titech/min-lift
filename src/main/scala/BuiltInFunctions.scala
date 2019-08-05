@@ -30,11 +30,20 @@ object BuiltInFunctions {
       ("toGlobal" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
       ("toLocal" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
       ("toPrivate" -> TypeScheme(List(a, b), (a ->: b) ->: (a ->: b))),
-      ("o" -> TypeScheme(List(a, b, c), (b ->: c) ->: (a ->: b) ->: (a ->: c))),
+
+      // Float operators
       ("*" -> TypeScheme(List(), Float ->: Float ->: Float)),
       ("+" -> TypeScheme(List(), Float ->: Float ->: Float)),
       ("<" -> TypeScheme(List(), Float ->: Float ->: Boolean)),
       (">" -> TypeScheme(List(), Float ->: Float ->: Boolean)),
+
+      // Int operators
+      ("*i" -> TypeScheme(List(), Int ->: Int ->: Int)),
+      ("=i" -> TypeScheme(List(), Int ->: Int ->: Boolean)),
+      ("mod" -> TypeScheme(List(), Int ->: Int ->: Int)),
+
+      // Boolean operators
+      ("or" -> TypeScheme(List(), Boolean ->: Boolean ->: Boolean)),
     ))
   }
 }

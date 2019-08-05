@@ -461,11 +461,19 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                   case _ => code
                 }
               }
-              case op@("+" | "*" | "<" | ">") => {
+              case op_ @("+" | "*" | "<" | ">" | "*i" | "=i" | "mod" | "or") => {
                 val resultType = calleeType.lastResultType
 
                 val GeneratedCode(prevLeft, left, _)   = asGeneratedCode(args(0))
                 val GeneratedCode(prevRight, right, _) = asGeneratedCode(args(1))
+
+                val op = op_ match {
+                  case "*i" => "*"
+                  case "=i" => "=="
+                  case "mod" => "%"
+                  case "or" => "||"
+                  case _ => op_
+                }
 
                 val (result, resultDecl) = generateResult(resultType, false, false)
 

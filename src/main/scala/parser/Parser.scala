@@ -50,6 +50,7 @@ class Parser(val tokens: Vector[Token]) {
         val Identifier(value) = tok
         value match {
           case "float" => Right(Type.Float)
+          case "int"   => Right(Type.Int)
           case _ => Left(ParseError(s"unknown type ${value}", tok.pos))
         }
       }
