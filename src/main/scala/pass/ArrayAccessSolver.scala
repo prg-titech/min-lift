@@ -26,13 +26,15 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
     view
   }
 
-  def evalApply(callee: View, aargs: List[View], env: ArgumentType): ResultType = {
+  def evalApply(callee: View, aargs: List[View], env_ : ArgumentType): ResultType = {
     callee match {
       case ExpressionView(callee) => {
-        evalApply(PartialApplyView(callee, aargs), List(), env)
+        evalApply(PartialApplyView(callee, aargs, EmptyEnvironment()), List(), env_)
       }
-      case PartialApplyView(callee, pargs) => {
+      case PartialApplyView(callee, pargs, penv) => {
         val args = pargs ::: aargs
+
+        val env = penv.mergeEnv(env_)
 
         callee match {
           case Expression.Identifier(name, false) => {
@@ -43,7 +45,7 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
                 val argCount = arw.args.size
 
                 if (argCount != args.size) {
-                  return PartialApplyView(callee, args)
+                  return PartialApplyView(callee, args, env)
                 }
               }
               case _ => {}
@@ -85,7 +87,7 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
               evalApplyLambda(lambda, args, env)
             }
             else {
-              PartialApplyView(lambda, args)
+              PartialApplyView(lambda, args, env)
             }
           }
         }
@@ -104,8 +106,8 @@ class ArrayAccessSolver extends ExpressionVisitor[Environment[View], View] {
     lambda.body.accept(this, env2)
   }
 
-  override def visit(node: Expression.Lambda, arg: ArgumentType): ResultType = {
-    PartialApplyView(node, List())
+  override def visit(node: Expression.Lambda, env: ArgumentType): ResultType = {
+    PartialApplyView(node, List(), env)
   }
 
   override def visit(node: Expression.Let, env: ArgumentType): ResultType = {
@@ -164,7 +166,7 @@ case class NullView() extends View {
   override def accept[A, R](visitor: ViewVisitor[A, R], arg: A): R = visitor.visit(this, arg)
 }
 // for constructing view
-case class PartialApplyView(callee: Expression, args: List[View]) extends View {
+case class PartialApplyView(callee: Expression, args: List[View], env: Environment[View]) extends View {
   override def accept[A, R](visitor: ViewVisitor[A, R], arg: A): R = visitor.visit(this, arg)
 }
 case class ExpressionView(expr: Expression) extends View {
