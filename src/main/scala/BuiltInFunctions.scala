@@ -38,6 +38,7 @@ object BuiltInFunctions {
       (">" -> TypeScheme(List(), Float ->: Float ->: Boolean)),
 
       // Int operators
+      ("+i" -> TypeScheme(List(), Int ->: Int ->: Int)),
       ("*i" -> TypeScheme(List(), Int ->: Int ->: Int)),
       ("=i" -> TypeScheme(List(), Int ->: Int ->: Boolean)),
       ("mod" -> TypeScheme(List(), Int ->: Int ->: Int)),

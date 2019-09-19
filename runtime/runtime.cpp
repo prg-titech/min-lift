@@ -286,8 +286,8 @@ int main(int argc, char *argv[])
       std::cout << "result size: " << raw_result_size << std::endl;
     }
     if (!profile) {
-      for (auto v : raw_result) {
-        std::cout << v << std::endl;
+      for (int i = 0; i < raw_result_size; i++) {
+        std::cout << raw_result[i] << std::endl;
       }
     }
 
