@@ -45,6 +45,8 @@ object BuiltInFunctions {
 
       // Boolean operators
       ("or" -> TypeScheme(List(), Boolean ->: Boolean ->: Boolean)),
+      ("and" -> TypeScheme(List(), Boolean ->: Boolean ->: Boolean)),
+      ("not" -> TypeScheme(List(), Boolean ->: Boolean)),
     ))
   }
 }

@@ -117,7 +117,12 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
   def visit(node: Lift, env: ArgumentType): String = {
 
     def generateParam(ty: Type, param: Expression.Identifier): String = {
-      s"const global ${ty.toCL} restrict ${param.value}"
+      if (ty.isScalar) {
+        s"const ${ty.toCL} ${param.value}"
+      }
+      else {
+        s"const global ${ty.toCL} restrict ${param.value}"
+      }
     }
 
     val Expression.Lambda(params, body) = node.body
@@ -461,7 +466,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                   case _ => code
                 }
               }
-              case op_ @("+" | "*" | "<" | ">" | "+i" | "*i" | "=i" | "mod" | "or") => {
+              case op_ @("+" | "*" | "<" | ">" | "+i" | "*i" | "=i" | "mod" | "or" | "and") => {
                 val resultType = calleeType.lastResultType
 
                 val GeneratedCode(prevLeft, left, _)   = asGeneratedCode(args(0))
@@ -473,6 +478,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                   case "=i" => "=="
                   case "mod" => "%"
                   case "or" => "||"
+                  case "and" => "&&"
                   case _ => op_
                 }
 
@@ -487,6 +493,26 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
 
                 GeneratedCode(code, result, resultType)
 
+              }
+              case op_ @("not") =>{
+                val resultType = calleeType.lastResultType
+
+                val GeneratedCode(prevValue, value, _)   = asGeneratedCode(args(0))
+
+                val op = op_ match {
+                  case "not" => "!"
+                  case _ => op_
+                }
+
+                val (result, resultDecl) = generateResult(resultType, false, false)
+
+                val code = s"""
+                   |$resultDecl
+                   |$prevValue
+                   |${result.code} = $op (${value.code});
+                """.stripMargin
+
+                GeneratedCode(code, result, resultType)
               }
             }
           }
