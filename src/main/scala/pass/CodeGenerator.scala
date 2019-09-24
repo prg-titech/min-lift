@@ -184,9 +184,8 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
         |  global int* bitmap,
         |  global int* indices,
         |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
-        |     int ary_size = 0;
         |     ${codeChunks(1)}
-        |     $postfixCode
+        |     *result_size = len;
         |}
         |
         |kernel void KERNEL3(
@@ -421,12 +420,11 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                    |
                    |// ---
                    |
-                   |int $vi = get_global_id(0);
-                   |if (bitmap[$vi]) {
-                   |  ${result.assign(s"indices[$vi] - 1", Variable(s"${collection.code}[$vi]"))}
+                   |int id = get_global_id(0);
+                   |if (bitmap[id]) {
+                   |  result[indices[id]] = ${collection.code}[id];
                    |}
-                   |int ${result.size("len")} = 0;
-                   |${result.assignSize(s"indices[${length.toCL} - 1]")}
+                   |int len = indices[${length.toCL} - 1];
                    |
                    |// ---
                 """.stripMargin
