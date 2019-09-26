@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
 
     std::vector<array_type> raw_result(raw_xses[0].size());
 
-    for (int i = 2; i < 10; i++) {
+    for (int i = 2; i < 12; i++) {
     // for (int i = 2; i < 4; i++) {
       cl_ulong exe_time = 0;
 

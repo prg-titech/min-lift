@@ -422,7 +422,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                    |
                    |int id = get_global_id(0);
                    |if (bitmap[id]) {
-                   |  result[indices[id]] = ${collection.code}[id];
+                   |  result[indices[id] - 1] = ${collection.code}[id];
                    |}
                    |int len = indices[${length.toCL} - 1];
                    |
