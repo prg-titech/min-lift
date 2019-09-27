@@ -159,7 +159,9 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
     val config =
         ("ChunkSize" -> chunkSize) ~
         ("InputSize" -> node.inputTypes.size) ~
-        ("KernelCount" -> (if (splitKernel) 3 else 1))
+        ("KernelCount" -> (if (splitKernel) 3 else 1)) ~
+        ("InputTypes" -> node.inputTypes.map(_.toCL)) ~
+        ("ResultType" -> resultType)
 
     if (splitKernel) {
       val codeChunks = bodyCode.split("// ---", 3)

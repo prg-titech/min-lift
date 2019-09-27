@@ -6,6 +6,7 @@
 #include <cmath>
 #include <sstream>
 #include <memory>
+#include <cstring>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/classification.hpp>
 
@@ -16,6 +17,43 @@
 
 #include <cxxopts.hpp>
 #include <json.hpp>
+
+using byte = unsigned char;
+
+enum class ArrayElementType {
+  Int,
+  Float,
+};
+
+struct Array {
+  std::unique_ptr<byte> data;
+  size_t elem_size;
+  size_t size;
+  ArrayElementType elem_type;
+
+  Array(byte *d, size_t es, size_t s, ArrayElementType ty): data(d), elem_size(es), size(s), elem_type(ty) {}
+
+  void dump(std::string sep) {
+    switch (elem_type) {
+      case ArrayElementType::Int: {
+                  std::vector<cl_int> vdata(size);
+                  std::memcpy(vdata.data(), data.get(), elem_size * size);
+                  for (auto &x : vdata) {
+                    std::cout << x << sep;
+                  }
+                  return;
+                }
+      case ArrayElementType::Float: {
+                  std::vector<float> vdata(size);
+                  std::memcpy(vdata.data(), data.get(), elem_size * size);
+                  for (auto &x : vdata) {
+                    std::cout << x << sep;
+                  }
+                  return;
+                }
+    }
+  }
+};
 
 int main(int argc, char *argv[])
 {
@@ -59,6 +97,8 @@ int main(int argc, char *argv[])
     auto config = nlohmann::json::parse(config_json);
     const int CHUNK_SIZE = config["ChunkSize"].get<int>();
     const int kernel_count = config["KernelCount"].get<int>();
+    const auto input_types = config["InputTypes"];
+    const auto result_type = config["ResultType"].get<std::string>();
 
     cl_context_properties properties[] = {
       CL_CONTEXT_PLATFORM, (cl_context_properties)(platforms[0])(), 0
@@ -90,51 +130,75 @@ int main(int argc, char *argv[])
       return 0;
     }
 
-    std::vector<std::vector<float>> raw_xses;
+    std::vector<Array> raw_xses;
     {
       std::vector<std::string> pathes;
       boost::algorithm::split(pathes, opts["data"].as<std::string>(), boost::is_any_of(","));
-      for (auto &path : pathes) {
-        raw_xses.emplace_back();
-        auto &raw_xs = raw_xses[raw_xses.size() - 1];
 
+      int i = 0;
+      for (auto &path : pathes) {
         std::ifstream ifs(path);
-        float v;
-        while (ifs >> v) raw_xs.push_back(v);
+
+        auto input_type = input_types[i].get<std::string>();
+        if (input_type == "int*") {
+          std::vector<cl_int> data;
+
+          int v;
+          while (ifs >> v) data.push_back(v);
+
+          size_t elem_size = sizeof(cl_int);
+          size_t size = data.size();
+          byte* mem = new unsigned char[elem_size * size];
+
+          std::memcpy(mem, data.data(), elem_size * size);
+
+          raw_xses.emplace_back(mem, elem_size, size, ArrayElementType::Int);
+        }
+        else if (input_type == "float*") {
+          std::vector<float> data;
+
+          float v;
+          while (ifs >> v) data.push_back(v);
+
+          size_t elem_size = sizeof(float);
+          size_t size = data.size();
+          byte* mem = new unsigned char[elem_size * size];
+
+          std::memcpy(mem, data.data(), elem_size * size);
+
+          raw_xses.emplace_back(mem, elem_size, size, ArrayElementType::Float);
+        }
+
+        i++;
       }
     }
-    const int N = raw_xses[0].size();
+    const int N = raw_xses[0].size;
 
     if (!quiet && !profile) {
       std::cout << "input data" << std::endl;
       int i = 0;
       for (auto &xs : raw_xses) {
         std::cout << "  " << i << ": ";
-        for (auto &x : xs) {
-          std::cout << x << " ";
-        }
+        xs.dump(" ");
         std::cout << std::endl;
         i++;
       }
     }
 
-    std::vector<cl::Buffer> xses;
-    for (auto &xs : raw_xses) {
-      xses.emplace_back(context, CL_MEM_READ_WRITE, sizeof(float) * N);
-    }
-    cl::Buffer result(context, CL_MEM_READ_WRITE, sizeof(float) * N);
-
-    cl::Buffer result_size(context, CL_MEM_READ_WRITE, sizeof(int));
-
     cl::CommandQueue queue(context, devices[0], CL_QUEUE_PROFILING_ENABLE);
 
-    for (int i = 0; i < raw_xses.size(); i++) {
-      queue.enqueueWriteBuffer(xses[i], CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_xses[i].data()));
+    std::vector<cl::Buffer> xses;
+    for (auto &xs : raw_xses) {
+      xses.emplace_back(context, CL_MEM_READ_WRITE, xs.elem_size * xs.size);
+      queue.enqueueWriteBuffer(xses[xses.size() - 1], CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(xs.data.get()));
     }
+
+    cl::Buffer result(context, CL_MEM_READ_WRITE, sizeof(float) * N);
     {
       std::vector<float> zeros(N, 0.0f);
       queue.enqueueWriteBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(zeros.data()));
     }
+    cl::Buffer result_size(context, CL_MEM_READ_WRITE, sizeof(int));
 
     cl_ulong sum_exe_time = 0;
     const int exe_count = profile ? 1000 : 1;
@@ -276,7 +340,7 @@ int main(int argc, char *argv[])
       // }
     }
 
-    std::vector<float> raw_result(raw_xses[0].size());
+    std::vector<float> raw_result(raw_xses[0].size);
     queue.enqueueReadBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_result.data()));
 
     int raw_result_size = 0;
