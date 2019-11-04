@@ -6,7 +6,7 @@
    ((toLocal (filterGlb (lambda (x)
                 (or
                  (=i (mod x 3) 0) (=i (mod x 5) 0))))) xs)
-   (pack ((toGlobal (reduceSeq 0 (+i))) ys)))))
+   (pack ((toGlobal (reduceSeq 0 (lambda (sum x) (+i sum x)))) ys)))))
 
 
   ; ((o

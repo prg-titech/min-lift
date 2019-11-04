@@ -5,6 +5,7 @@ import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
 import ast._
 import lib._
+import org.json4s.DefaultFormats
 
 class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
 
@@ -114,16 +115,16 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
     }
   }
 
-  def visit(node: Lift, env: ArgumentType): String = {
-
-    def generateParam(ty: Type, param: Expression.Identifier): String = {
-      if (ty.isScalar) {
-        s"const ${ty.toCL} ${param.value}"
-      }
-      else {
-        s"const global ${ty.toCL} restrict ${param.value}"
-      }
+  def generateParam(ty: Type, param: Expression.Identifier): String = {
+    if (ty.isScalar) {
+      s"const ${ty.toCL} ${param.value}"
     }
+    else {
+      s"const global ${ty.toCL} restrict ${param.value}"
+    }
+  }
+
+  def visit(node: Lift, env: ArgumentType): String = {
 
     val Expression.Lambda(params, body) = node.body
 
@@ -166,37 +167,50 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
     if (splitKernel) {
       val codeChunks = bodyCode.split("// ---", 3)
 
+      val inputArrays = node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }
+      val inputVariables = node.variables.map(v => s"int ${v.toCL}")
+
+      implicit val formats = DefaultFormats
+
+      val kernel3ConfigRaw = codeChunks(2).split("\n")(1).substring(3)
+      val kernel3Config = parse(kernel3ConfigRaw)
+
+      // replace 1st element by the result array of kernel2
+      val kernel3InputArrays = inputArrays.updated(0, (kernel3Config \ "InputArray").extractOrElse(inputArrays(0)))
+      val kernel3InputVariables = inputVariables.updated(0, (kernel3Config \ "InputLength").extractOrElse(inputVariables(0)))
+
       s"""// ${compact(render(config))}
         |
         |kernel void KERNEL(
-        |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
+        |  ${inputArrays.mkString(",\n")},
         |  global $resultType result,
         |  global int* result_size,
         |  global int* bitmap,
-        |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
+        |  ${inputVariables.mkString(", ")}) {
         |     // int ary_size = 0;
         |
         |     ${codeChunks(0)}
         |}
         |
         |kernel void KERNEL2(
-        |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
+        |  ${inputArrays.mkString(",\n")},
         |  global $resultType result,
         |  global int* result_size,
         |  global int* bitmap,
         |  global int* indices,
-        |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
+        |  ${inputVariables.mkString(", ")}) {
         |     ${codeChunks(1)}
         |     *result_size = len;
         |}
         |
         |kernel void KERNEL3(
-        |  ${node.inputTypes.zip(params).map { case (ty, param) => generateParam(ty, param) }.mkString(",\n")},
+        |  ${kernel3InputArrays.mkString(",\n")},
         |  global $resultType result,
         |  global int* result_size,
-        |  ${node.variables.map(v => s"int ${v.toCL}").mkString(", ")}) {
+        |  ${kernel3InputVariables.mkString(", ")}) {
         |     int ary_size = 0;
         |     ${codeChunks(2)}
+        |     $postfixCode
         |}
         |
         |$prefixSumKernel
@@ -413,7 +427,15 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                     args(0), List(ExpressionCode(elemExpr)), env)
 
                 val resultType = calleeType.lastResultType
-                val (result, resultDecl) = generateResult(resultType, true, true)
+                val (result_, resultDecl) = generateResult(resultType, true, true)
+
+                val result = if (result_.code == "result") {
+                  Variable("result2")
+                } else {
+                  result_
+                }
+
+                val Type.Existential(Type.Array(_, resultLen)) = resultType
 
                 val code = s"""
                    |int $vi = get_global_id(0);
@@ -429,6 +451,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                    |int len = indices[${length.toCL} - 1];
                    |
                    |// ---
+                   |// { "InputArray": "${generateParam(resultType, Expression.Identifier(result.toString, true))}", "InputLength": "int ${resultLen.toCL}" }
                 """.stripMargin
 
                 GeneratedCode(code, result, resultType)
