@@ -81,8 +81,7 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
         val replacedTy = unified.replace(valueType)(idGen)
         replacedTy match {
           case Array(innerType, size) => {
-            val existSize = SizeVariable(s"l${idGen.generateInt()}")
-            val existType = Existential(Array(innerType, existSize))
+            val existType = Existential(Array(innerType, size))
 
             pack.ty = existType
 

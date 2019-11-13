@@ -181,7 +181,7 @@ object Type {
     }
   }
 
-  case class Existential(/*typeVar: TypeVar,*/ ty: Type) extends Type {
+  case class Existential(ty: Type) extends Type {
     override def toCL: String = ty.toCL
     override def hasType(tv: Type): Boolean = ty.hasType(tv)
     override def replaceBy(from: TypeVar, to: Type): Type = Existential(ty.replaceBy(from, to))
