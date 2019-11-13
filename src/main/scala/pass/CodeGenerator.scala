@@ -424,7 +424,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 val elemExpr = Expression.Identifier(vi, false)
                 elemExpr.ty  = funcType.nthArg(0)
                 val GeneratedCode(funcCode, funcResult, elemTy) = generateApply(
-                    args(0), List(ExpressionCode(elemExpr)), env)
+                  args(0), List(GeneratedCode("", Variable(vi), funcType.nthArg(0))), env)
 
                 val resultType = calleeType.lastResultType
                 val (result_, resultDecl) = generateResult(resultType, true, true)
@@ -566,11 +566,32 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
   }
 
   def generateApplyLambda(lambda: Expression.Lambda, args: List[Code], env: ArgumentType): ResultType = {
-    val env2 = lambda.args.zip(args).foldRight(env.pushEnv(scala.Predef.Map[String, Code]())){ case ((id, code), env) => {
-      env.append(id.value, code)
-    }}
+    val argumentCodes = args
+      .filter( arg =>
+        arg match {
+          case GeneratedCode(_, _, ty) => ty.isScalar
+          case _ => false
+        }
+      )
+      .map(arg => {
+        val GeneratedCode(code, result, ty) = arg
+        val tempVar = tempVarGen.generateString()
+        (varDecl(Expression.Identifier(tempVar, false), ty, None, result), GeneratedCode("", Variable(tempVar), ty), code)
+    })
 
-    lambda.body.accept(this, env2)
+    val env2 = lambda.args.zip(argumentCodes).foldRight(env.pushEnv(scala.Predef.Map[String, Code]())) { case ((id, code), env) =>
+      env.append(id.value, code._2)
+    }
+
+    val GeneratedCode(code, result, ty) = lambda.body.accept(this, env2)
+
+    val newCode = s"""
+       |${argumentCodes.map(_._3).mkString("\n")}
+       |${argumentCodes.map(_._1).mkString("\n")}
+       |${code}
+     """.stripMargin
+
+    GeneratedCode(newCode, result, ty)
   }
 
   def visit(node: Expression.Lambda, env: ArgumentType): ResultType = {

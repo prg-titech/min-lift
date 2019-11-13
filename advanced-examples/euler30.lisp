@@ -2,15 +2,18 @@
  (N)
  ((array-type int N))
  (lambda (xs)
-  (let square (lambda (x) (*i x x))
+  (let fourthPower (lambda (x) (*i (*i x x)(*i x x)))
     (unpack ys
      ((toLocal (filterGlb (lambda (x)
-                  (let sumOfDidits
-                      (+i (square (/i x 1000))
-                      (+i (square (mod (/i x 100) 10))
-                      (+i (square (mod (/i x 10)  10))
-                          (square (mod x 10)))))
-                    (=i sumOfDidits x))))) xs)
-     ;(pack ((toGlobal (reduceSeq 0 (lambda (sum x) (+i sum x)))) ys)))))
-     (pack ys)))))
+                  (and
+                    (not (=i x 1))
+                    (let sumOfDidits
+                        (+i (fourthPower (/i x 1000))
+                        (+i (fourthPower (mod (/i x 100) 10))
+                        (+i (fourthPower (mod (/i x 10)  10))
+                            (fourthPower (mod x 10)))))
+                      (=i sumOfDidits x))
+                    )
+                  ))) xs)
+     (pack ((toGlobal (reduceSeq 0 (lambda (sum x) (+i sum x)))) ys))))))
 
