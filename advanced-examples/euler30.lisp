@@ -15,5 +15,5 @@
                       (=i sumOfDidits x))
                     )
                   ))) xs)
-     (pack ((toGlobal (reduceSeq 0 (lambda (sum x) (+i sum x)))) ys))))))
+     ((toGlobal (reduceSeq 0 (lambda (sum x) (+i sum x)))) ys)))))
 

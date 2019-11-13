@@ -25,27 +25,33 @@ enum class ArrayElementType {
   Float,
 };
 
+ArrayElementType fromTypeStr(const std::string &str) {
+  if (str == "int*") { return ArrayElementType::Int; }
+  else if (str == "float*") { return ArrayElementType::Float; }
+  else { throw "unknown type"; }
+}
+
 struct Array {
   std::unique_ptr<byte> data;
-  size_t elem_size;
-  size_t size;
-  ArrayElementType elem_type;
+  const size_t elem_size;
+  const size_t size;
+  const ArrayElementType elem_type;
 
   Array(byte *d, size_t es, size_t s, ArrayElementType ty): data(d), elem_size(es), size(s), elem_type(ty) {}
 
-  void dump(std::string sep) {
+  void dump(std::string sep, size_t s) {
     switch (elem_type) {
       case ArrayElementType::Int: {
-                  std::vector<cl_int> vdata(size);
-                  std::memcpy(vdata.data(), data.get(), elem_size * size);
+                  std::vector<cl_int> vdata(s);
+                  std::memcpy(vdata.data(), data.get(), elem_size * s);
                   for (auto &x : vdata) {
                     std::cout << x << sep;
                   }
                   return;
                 }
       case ArrayElementType::Float: {
-                  std::vector<float> vdata(size);
-                  std::memcpy(vdata.data(), data.get(), elem_size * size);
+                  std::vector<cl_float> vdata(s);
+                  std::memcpy(vdata.data(), data.get(), elem_size * s);
                   for (auto &x : vdata) {
                     std::cout << x << sep;
                   }
@@ -53,6 +59,8 @@ struct Array {
                 }
     }
   }
+
+  size_t byte_size() const { return elem_size * size; }
 };
 
 int main(int argc, char *argv[])
@@ -98,7 +106,7 @@ int main(int argc, char *argv[])
     const int CHUNK_SIZE = config["ChunkSize"].get<int>();
     const int kernel_count = config["KernelCount"].get<int>();
     const auto input_types = config["InputTypes"];
-    const auto result_type = config["ResultType"].get<std::string>();
+    const auto result_type = fromTypeStr(config["ResultType"].get<std::string>());
 
     cl_context_properties properties[] = {
       CL_CONTEXT_PLATFORM, (cl_context_properties)(platforms[0])(), 0
@@ -139,8 +147,8 @@ int main(int argc, char *argv[])
       for (auto &path : pathes) {
         std::ifstream ifs(path);
 
-        auto input_type = input_types[i].get<std::string>();
-        if (input_type == "int*") {
+        auto input_type = fromTypeStr(input_types[i].get<std::string>());
+        if (input_type == ArrayElementType::Int) {
           std::vector<cl_int> data;
 
           int v;
@@ -152,21 +160,21 @@ int main(int argc, char *argv[])
 
           std::memcpy(mem, data.data(), elem_size * size);
 
-          raw_xses.emplace_back(mem, elem_size, size, ArrayElementType::Int);
+          raw_xses.emplace_back(mem, elem_size, size, input_type);
         }
-        else if (input_type == "float*") {
-          std::vector<float> data;
+        else if (input_type == ArrayElementType::Float) {
+          std::vector<cl_float> data;
 
-          float v;
+          cl_float v;
           while (ifs >> v) data.push_back(v);
 
-          size_t elem_size = sizeof(float);
+          size_t elem_size = sizeof(cl_float);
           size_t size = data.size();
           byte* mem = new unsigned char[elem_size * size];
 
           std::memcpy(mem, data.data(), elem_size * size);
 
-          raw_xses.emplace_back(mem, elem_size, size, ArrayElementType::Float);
+          raw_xses.emplace_back(mem, elem_size, size, input_type);
         }
 
         i++;
@@ -179,7 +187,7 @@ int main(int argc, char *argv[])
       int i = 0;
       for (auto &xs : raw_xses) {
         std::cout << "  " << i << ": ";
-        xs.dump(" ");
+        xs.dump(" ", xs.size);
         std::cout << std::endl;
         i++;
       }
@@ -190,13 +198,18 @@ int main(int argc, char *argv[])
     std::vector<cl::Buffer> xses;
     for (auto &xs : raw_xses) {
       xses.emplace_back(context, CL_MEM_READ_WRITE, xs.elem_size * xs.size);
-      queue.enqueueWriteBuffer(xses[xses.size() - 1], CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(xs.data.get()));
+      queue.enqueueWriteBuffer(xses[xses.size() - 1], CL_TRUE, 0, xs.byte_size(), reinterpret_cast<void*>(xs.data.get()));
     }
 
-    cl::Buffer result(context, CL_MEM_READ_WRITE, sizeof(float) * N);
+    size_t result_elem_size = 0;
+    if (result_type == ArrayElementType::Int) result_elem_size = sizeof(cl_int);
+    else if (result_type == ArrayElementType::Float) result_elem_size = sizeof(cl_float);
+    Array raw_result(new byte[result_elem_size * raw_xses[0].size], result_elem_size, raw_xses[0].size, result_type);
+
+    cl::Buffer result(context, CL_MEM_READ_WRITE, raw_result.byte_size());
     {
-      std::vector<float> zeros(N, 0.0f);
-      queue.enqueueWriteBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(zeros.data()));
+      std::vector<byte> zeros(raw_result.byte_size(), 0);
+      queue.enqueueWriteBuffer(result, CL_TRUE, 0, raw_result.byte_size(), reinterpret_cast<void*>(zeros.data()));
     }
     cl::Buffer result_size(context, CL_MEM_READ_WRITE, sizeof(int));
 
@@ -294,7 +307,8 @@ int main(int argc, char *argv[])
           int raw_result_size = 0;
           queue.enqueueReadBuffer(result_size, CL_TRUE, 0, sizeof(int), reinterpret_cast<void*>(&raw_result_size));
 
-          queue.enqueueCopyBuffer(result, xses[0], 0, 0, sizeof(float) * N);
+          // TODO: fix size gap
+          queue.enqueueCopyBuffer(result, xses[0], 0, 0, raw_result.byte_size());
           int arg_i = 0;
           for (auto &xs : xses) {
             kernel3->setArg(arg_i, xs);
@@ -340,19 +354,16 @@ int main(int argc, char *argv[])
       // }
     }
 
-    std::vector<float> raw_result(raw_xses[0].size);
-    queue.enqueueReadBuffer(result, CL_TRUE, 0, sizeof(float) * N, reinterpret_cast<void*>(raw_result.data()));
-
     int raw_result_size = 0;
     queue.enqueueReadBuffer(result_size, CL_TRUE, 0, sizeof(int), reinterpret_cast<void*>(&raw_result_size));
+
+    queue.enqueueReadBuffer(result, CL_TRUE, 0, raw_result.elem_size * raw_result_size, reinterpret_cast<void*>(raw_result.data.get()));
 
     if (!quiet && !profile) {
       std::cout << "result size: " << raw_result_size << std::endl;
     }
     if (!profile) {
-      for (int i = 0; i < raw_result_size; i++) {
-        std::cout << raw_result[i] << std::endl;
-      }
+      raw_result.dump("\n", raw_result_size);
     }
 
     if (!quiet) {

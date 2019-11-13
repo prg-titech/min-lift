@@ -559,17 +559,15 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
   }
 
   def generateApplyLambda(lambda: Expression.Lambda, args: List[Code], env: ArgumentType): ResultType = {
-    val argumentCodes = args
-      .filter( arg =>
-        arg match {
-          case GeneratedCode(_, _, ty) => ty.isScalar
-          case _ => false
+    val argumentCodes = args.map(arg => arg match {
+        case GeneratedCode(_, _, ty) if ty.isScalar =>  {
+          val GeneratedCode(code, result, ty) = arg
+          val tempVar = tempVarGen.generateString()
+          (varDecl(Expression.Identifier(tempVar, false), ty, None, result), GeneratedCode("", Variable(tempVar), ty), code)
         }
-      )
-      .map(arg => {
-        val GeneratedCode(code, result, ty) = arg
-        val tempVar = tempVarGen.generateString()
-        (varDecl(Expression.Identifier(tempVar, false), ty, None, result), GeneratedCode("", Variable(tempVar), ty), code)
+        case _ => {
+          ("", arg, "")
+        }
     })
 
     val env2 = lambda.args.zip(argumentCodes).foldRight(env.pushEnv(scala.Predef.Map[String, Code]())) { case ((id, code), env) =>
