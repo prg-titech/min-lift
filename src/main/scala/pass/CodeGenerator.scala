@@ -352,12 +352,9 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 val acc = indexVarGen.generateString()
 
                 val funcType = calleeType.nthArg(1).asInstanceOf[Type.Arrow]
-                val accExpr  = Expression.Identifier(acc, false)
-                accExpr.ty   = funcType.nthArg(0)
-                val elemExpr = Expression.Identifier(vi, false)
-                elemExpr.ty  = funcType.nthArg(1)
+                val accType  = funcType.nthArg(0)
                 val GeneratedCode(funcCode, funcResult, elemTy) = generateApply(
-                    args(1), List(ExpressionCode(accExpr), ExpressionCode(elemExpr)), env)
+                    args(1), List(GeneratedCode("", Variable(acc), funcType.nthArg(0)), GeneratedCode("", Variable(vi), funcType.nthArg(1))), env)
 
                 val resultType = calleeType.lastResultType
                 val (result, resultDecl) = generateResult(resultType, true, false)
@@ -366,7 +363,7 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                    |$prevCode
                    |$resultDecl
                    |$initCode
-                   |${accExpr.ty.toCL} $acc = $initResult;
+                   |${accType.toCL} $acc = $initResult;
                    |{
                    |  for (int $vi = 0; $vi < ${length.toCL}; $vi++) {
                    |    $funcCode
@@ -385,10 +382,8 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 val vi = indexVarGen.generateString()
 
                 val funcType = calleeType.nthArg(0).asInstanceOf[Type.Arrow]
-                val elemExpr = Expression.Identifier(vi, false)
-                elemExpr.ty  = funcType.nthArg(0)
                 val GeneratedCode(funcCode, funcResult, elemTy) = generateApply(
-                    args(0), List(ExpressionCode(elemExpr)), env)
+                    args(0), List(GeneratedCode("", Variable(vi), funcType.nthArg(0))), env)
 
                 val resultType = calleeType.lastResultType
                 val (result, resultDecl) = generateResult(resultType, true, true)
@@ -421,8 +416,6 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
                 val vi = indexVarGen.generateString()
 
                 val funcType = calleeType.nthArg(0).asInstanceOf[Type.Arrow]
-                val elemExpr = Expression.Identifier(vi, false)
-                elemExpr.ty  = funcType.nthArg(0)
                 val GeneratedCode(funcCode, funcResult, elemTy) = generateApply(
                   args(0), List(GeneratedCode("", Variable(vi), funcType.nthArg(0))), env)
 
