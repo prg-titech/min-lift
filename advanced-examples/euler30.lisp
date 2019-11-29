@@ -3,8 +3,8 @@
  ((array-type int N))
  (lambda (xs)
   (let fourthPower (lambda (x) (*i (*i x x)(*i x x)))
-    (unpack ys
-     ((toLocal (filterGlb (lambda (x)
+     (let ys
+      ((toLocal (filterGlb (lambda (x)
                   (and
                     (not (=i x 1))
                     (let sumOfDidits
@@ -15,5 +15,6 @@
                       (=i sumOfDidits x))
                     )
                   ))) xs)
-     ((toGlobal (reduceSeq 0 (lambda (sum x) (+i sum x)))) ys)))))
+     ((toGlobal (reduceSeq 0 (lambda (sum x) (+i sum x)))) ys))
+    )))
 
