@@ -83,8 +83,8 @@ class MinLiftSpec extends FunSpec {
             | (N)
             | ((array-type float N))
             | (lambda (xs)
-            |   (unpack xs1 (filterSeq (lambda (x) true) xs)
-            |     (unpack xs2 (filterSeq (lambda (x) true) xs)
+            |   (let xs1 (filterSeq (lambda (x) true) xs)
+            |     (let xs2 (filterSeq (lambda (x) true) xs)
             |       (pack (zip xs1 xs2))))))
           """.stripMargin
 
@@ -95,23 +95,20 @@ class MinLiftSpec extends FunSpec {
         val Left(err) = lift
         assert(err.toString.contains("unsolvable constraints"))
       }
-      ignore("should fail without packing a unpacked array") {
+      it("should accept without packing a unpacked array") {
         val code =
           """
             |(lift
             | (N)
             | ((array-type float N))
             | (lambda (xs)
-            |   (unpack ys (filterSeq (lambda (x) true) xs)
+            |   (let ys (filterSeq (lambda (x) true) xs)
             |     ys)))
           """.stripMargin
 
         val lift = TypeChecker.check(parse(code))
 
-        println(lift)
-        assert(lift.isInstanceOf[Left[String, Lift]])
-        val Left(err) = lift
-        assert(err.toString.contains("result type of unpack has its size variable"))
+        assert(lift.isInstanceOf[Right[String, Lift]])
       }
 
       it("should accept packing a unpacked array") {
@@ -121,7 +118,7 @@ class MinLiftSpec extends FunSpec {
             | (N)
             | ((array-type float N))
             | (lambda (xs)
-            |   (unpack ys (filterSeq (lambda (x) true) xs)
+            |   (let ys (filterSeq (lambda (x) true) xs)
             |     (pack ys))))
           """.stripMargin
 
@@ -137,7 +134,7 @@ class MinLiftSpec extends FunSpec {
             | (N)
             | ((array-type float N))
             | (lambda (xs)
-            |  (unpack ys (filterSeq (lambda (x) true) xs)
+            |  (let ys (filterSeq (lambda (x) true) xs)
             |   (let zs ys
             |    (pack (zip ys zs))))))
           """.stripMargin
@@ -154,11 +151,16 @@ class MinLiftSpec extends FunSpec {
             | (N)
             | ((array-type float N))
             | (lambda (xs)
-            |   ((lambda (x) (unpack y x (pack (reduceSeq 0.0f + y))))
+            |   ((lambda (x) (let y x (pack (reduceSeq 0.0f + y))))
             |     (filterSeq (lambda (x) (< x 5.0f)) xs))))
           """.stripMargin
 
-        val lift = TypeChecker.check(parse(code))
+        val ast = parse(code);
+        val lift = for (
+          ast <- Preprocessor.normalize(ast);
+          ast <- Preprocessor.kNormalize(ast);
+          ast <- TypeChecker.check(ast)
+        ) yield { ast }
 
         assert(lift.isInstanceOf[Right[String, Lift]])
       }

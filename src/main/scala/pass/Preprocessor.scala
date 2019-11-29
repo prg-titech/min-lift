@@ -28,10 +28,11 @@ class Preprocessor extends ExpressionVisitor[Unit, Either[LiftError, Expression]
         }
       }
       // (((f x) y) z) -> ((f x) y z) -> (f x y z)
-      case Expression.Apply(ccallee, cargs) => {
+      /*case Expression.Apply(ccallee, cargs) => {
         val newApply = Expression.Apply(ccallee, cargs ++ node.args)
         newApply.accept(this, ())
       }
+       */
       case _ => {
         node.callee.accept(this, ()).flatMap(callee => {
           val args = ListOfEitherTransposer.transpose(node.args.map(_.accept(this, ())))
