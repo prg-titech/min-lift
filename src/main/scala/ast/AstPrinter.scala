@@ -18,7 +18,8 @@ class AstPrinter extends ExpressionVisitor[Unit, String] {
 
   def view(node: Expression) = {
     if (node.view != null) {
-      s"(${ViewConstructor.construct(node.view)})"
+      val v = ViewConstructor.construct(node.view)
+      v.map(s => s"($s)").getOrElse("")
     }
     else {
       ""

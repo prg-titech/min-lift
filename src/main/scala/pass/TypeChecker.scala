@@ -42,36 +42,41 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
   }
 
   override def visit(let: Let, env: ArgumentType): ResultType = {
-    let.value.accept(this, env).flatMap { case (valueType, valueSubst) =>
+    let.value.accept(this, env).flatMap { case (valueType0, valueSubst) =>
 
-      if (!let.unpack) {
-        let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), valueType)))).map { case (ty, subst) =>
-          let.ty = ty
-          (ty, valueSubst.concat(subst))
-        }
-      }
-      else {
-        val existSize = SizeVariable(s"l${idGen.generateInt()}")
-        val existType = Existential(Array(generateTypeVar(idGen), existSize))
+      TypeChecker.unify(valueSubst, EmptySubst()).flatMap(unified => {
+        val valueType = unified.replace(valueType0)(idGen)
+        valueType match {
+          case Existential(ty) => {
+            val existSize = SizeVariable(s"l${idGen.generateInt()}")
+            val existType = Existential(Array(generateTypeVar(idGen), existSize))
 
-        let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), existType.ty)))).flatMap { case (bodyType, bodySubst) =>
-          val subst = valueSubst.concat(bodySubst)
+            let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), existType.ty)))).flatMap { case (bodyType, bodySubst) =>
+              val subst = valueSubst.concat(bodySubst)
 
-          TypeChecker.unify(subst, EmptySubst()).flatMap(unified => {
-            val replacedTy = unified.replace(bodyType)(idGen)
-            if (replacedTy.hasType(existSize)) {
-              val newBodyType = Existential(replacedTy)
-              let.ty = newBodyType
-              Right((bodyType, subst.append(valueType, existType)))
-              // Left(TypeError("result type of unpack has its size variable"))
+              TypeChecker.unify(subst, EmptySubst()).flatMap(unified => {
+                val replacedTy = unified.replace(bodyType)(idGen)
+                if (replacedTy.hasType(existSize)) {
+                  val newBodyType = Existential(replacedTy)
+                  let.ty = newBodyType
+                  Right((bodyType, subst.append(valueType0, existType)))
+                  // Left(TypeError("result type of unpack has its size variable"))
+                }
+                else {
+                  let.ty = bodyType
+                  Right((bodyType, subst.append(valueType0, existType)))
+                }
+              })
             }
-            else {
-              let.ty = bodyType
-              Right((bodyType, subst.append(valueType, existType)))
+          }
+          case _ => {
+            let.body.accept(this, env.pushEnv(Map(let.id.value -> TypeScheme(List(), valueType0)))).map { case (ty, subst) =>
+              let.ty = ty
+              (ty, valueSubst.concat(subst))
             }
-          })
+          }
         }
-      }
+      })
     }
   }
 

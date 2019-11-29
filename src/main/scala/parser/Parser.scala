@@ -92,7 +92,7 @@ class Parser(val tokens: Vector[Token]) {
                 Expression.Lambda(args.toList, body)
               }
             }
-            case "let" | "unpack" => {
+            case "let" /*| "unpack"*/ => {
               for (
                 _ <- consume(Identifier(fstId));
                 id <- parseIdentifier();

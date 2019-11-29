@@ -178,10 +178,7 @@ class MinLiftSpec extends FunSpec {
         val ast = parse(code)
         val kNormAst = Preprocessor.kNormalize(ast).right.get
         println(AstPrinter.print(kNormAst))
-        println(Preprocessor.insertPackUnpack(kNormAst))
-        val insertedAst = Preprocessor.insertPackUnpack(kNormAst).right.get
-        println(AstPrinter.print(insertedAst))
-        val lift = TypeChecker.check(insertedAst)
+        val lift = TypeChecker.check(kNormAst)
         assert(lift.isInstanceOf[Right[String, Lift]])
       }
     }

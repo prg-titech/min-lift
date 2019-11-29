@@ -592,15 +592,11 @@ class CodeGenerator extends ExpressionVisitor[Environment[Code], Code] {
   def visit(node: Expression.Let, env: ArgumentType): ResultType = {
     val generatedValue_ = node.value.accept(this, env)
 
-    val generatedValue = if (node.unpack) {
-      generatedValue_ match {
-        case GeneratedCode(code, result, Type.Existential(ty)) => {
-          GeneratedCode(code, result, ty)
-        }
-        case v@_ => v
+    val generatedValue = generatedValue_ match {
+      case GeneratedCode(code, result, Type.Existential(ty)) => {
+        GeneratedCode(code, result, ty)
       }
-    } else {
-      generatedValue_
+      case v@_ => v
     }
 
     val env2 = env.pushEnv(Map(node.id.value -> generatedValue))
