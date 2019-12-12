@@ -59,12 +59,12 @@ class TypeInferer(val idGen: UniqueIdGenerator) extends ExpressionVisitor[Enviro
                 if (replacedTy.hasType(existSize)) {
                   val newBodyType = Existential(replacedTy)
                   let.ty = newBodyType
-                  Right((bodyType, subst.append(valueType0, existType)))
+                  Right((bodyType, subst/*.append(valueType0, existType)*/))
                   // Left(TypeError("result type of unpack has its size variable"))
                 }
                 else {
                   let.ty = bodyType
-                  Right((bodyType, subst.append(valueType0, existType)))
+                  Right((bodyType, subst/*.append(valueType0, existType)*/))
                 }
               })
             }

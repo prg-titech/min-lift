@@ -13,9 +13,6 @@ object MinLift {
     for (
       tokens <- Token.tokenize(source);
       ast <- Parser.parse(tokens);
-      ast <- Right(ast);
-      //       norm <- Right(Normalizer.normalize(typedAst));
-      ast <- Right(ast);
       _ <- Right(println(AstPrinter.print(ast)));
       ast <- Preprocessor.normalize(ast);
       ast <- Preprocessor.kNormalize(ast);
