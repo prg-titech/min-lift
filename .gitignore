@@ -6,6 +6,7 @@ runtime/ext-include/*
 !runtime/ext-include/.keep
 
 *.cl
+!pro2019-4/*.cl
 
 .attach_pid*
 
