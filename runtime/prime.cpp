@@ -68,8 +68,8 @@ int main(int argc, char *argv[])
     auto devices = context.getInfo<CL_CONTEXT_DEVICES>();
 
     if (!quiet) {
-      std::cout << "Using device: " << devices[0].getInfo<CL_DEVICE_NAME>() << std::endl;
-      std::cout << "Chunk size: " << CHUNK_SIZE << std::endl;
+      // std::cout << "Using device: " << devices[0].getInfo<CL_DEVICE_NAME>() << std::endl;
+      // std::cout << "Chunk size: " << CHUNK_SIZE << std::endl;
     }
 
     cl::Program program(context, code);
@@ -107,18 +107,18 @@ int main(int argc, char *argv[])
     }
     int N = raw_xses[0].size();
 
-    if (!quiet && !profile) {
-      std::cout << "input data" << std::endl;
-      int i = 0;
-      for (auto &xs : raw_xses) {
-        std::cout << "  " << i << ": ";
-        for (auto &x : xs) {
-          std::cout << x << " ";
-        }
-        std::cout << std::endl;
-        i++;
-      }
-    }
+    // if (!quiet && !profile) {
+    //   std::cout << "input data" << std::endl;
+    //   int i = 0;
+    //   for (auto &xs : raw_xses) {
+    //     std::cout << "  " << i << ": ";
+    //     for (auto &x : xs) {
+    //       std::cout << x << " ";
+    //     }
+    //     std::cout << std::endl;
+    //     i++;
+    //   }
+    // }
 
     std::vector<cl::Buffer> xses;
     for (auto &xs : raw_xses) {
@@ -147,7 +147,8 @@ int main(int argc, char *argv[])
 
     std::vector<array_type> raw_result(raw_xses[0].size());
 
-    for (int i = 2; i < 12; i++) {
+    const int count = std::log2((float)N) + 3;
+    for (int i = 2; i < count; i++) {
     // for (int i = 2; i < 4; i++) {
       cl_ulong exe_time = 0;
 
@@ -282,16 +283,16 @@ int main(int argc, char *argv[])
     queue.enqueueReadBuffer(result_size, CL_TRUE, 0, sizeof(int), reinterpret_cast<void*>(&raw_result_size));
 
     if (!quiet && !profile) {
-      std::cout << "result size: " << raw_result_size << std::endl;
+      // std::cout << "result size: " << raw_result_size << std::endl;
     }
     if (!profile) {
-      for (int i = 0; i < raw_result_size; i++) {
+      for (int i = 1; i < raw_result_size; i++) {
         std::cout << raw_result[i] << std::endl;
       }
     }
 
     if (!quiet) {
-      std::cout << "execution time: " << static_cast<double>(sum_exe_time) / exe_count * 1e-3f << " us" << std::endl;
+      // std::cout << "execution time: " << static_cast<double>(sum_exe_time) / exe_count * 1e-3f << " us" << std::endl;
     }
 
     return 0;
