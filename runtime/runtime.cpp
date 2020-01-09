@@ -7,6 +7,8 @@
 #include <sstream>
 #include <memory>
 #include <cstring>
+#include <thread>
+#include <chrono>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/classification.hpp>
 
@@ -116,8 +118,8 @@ int main(int argc, char *argv[])
     auto devices = context.getInfo<CL_CONTEXT_DEVICES>();
 
     if (!quiet) {
-      std::cout << "Using device: " << devices[0].getInfo<CL_DEVICE_NAME>() << std::endl;
-      std::cout << "Chunk size: " << CHUNK_SIZE << std::endl;
+      // std::cout << "Using device: " << devices[0].getInfo<CL_DEVICE_NAME>() << std::endl;
+      // std::cout << "Chunk size: " << CHUNK_SIZE << std::endl;
     }
 
     cl::Program program(context, code);
@@ -214,7 +216,8 @@ int main(int argc, char *argv[])
     cl::Buffer result_size(context, CL_MEM_READ_WRITE, sizeof(int));
 
     cl_ulong sum_exe_time = 0;
-    const int exe_count = profile ? 1000 : 1;
+    // const int exe_count = profile ? 1000 : 1;
+    const int exe_count = 1;
 
     auto get_exe_time = [](const cl::Event &event) {
       return event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - event.getProfilingInfo<CL_PROFILING_COMMAND_START>();
@@ -352,6 +355,8 @@ int main(int argc, char *argv[])
       // if (!quiet) {
       //   std::cout << "interval execution time: " << static_cast<double>(exe_time) * 1e-3f << " us" << std::endl;
       // }
+
+      // std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     int raw_result_size = 0;
@@ -367,7 +372,8 @@ int main(int argc, char *argv[])
     }
 
     if (!quiet) {
-      std::cout << "execution time: " << static_cast<double>(sum_exe_time) / exe_count * 1e-3f << " us" << std::endl;
+      // std::cout << "execution time: " << static_cast<double>(sum_exe_time) / exe_count * 1e-3f << " us" << std::endl;
+      std::cout << static_cast<double>(sum_exe_time) / exe_count * 1e-3f << std::endl;
     }
 
     return 0;

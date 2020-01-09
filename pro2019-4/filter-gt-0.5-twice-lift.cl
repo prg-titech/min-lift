@@ -1,4 +1,4 @@
-// {"ChunkSize":5,"InputSize":1,"KernelCount":3}
+// {"ChunkSize":5,"InputSize":1,"KernelCount":3,"InputTypes":["float*"],"ResultType":"float*"}
 
 kernel void KERNEL(
   const global float* restrict xs,
@@ -8,22 +8,23 @@ kernel void KERNEL(
   int N) {
      // int ary_size = 0;
 
-     
-
-int i1 = get_global_id(0);
-
- float x = xs[i1];
-
-private bool temp2;
 
 
-private float temp1;
-temp1 = 0.5f;
-     
-temp2 = x > temp1;
-            
-     
-bitmap[i1] = temp2;
+
+
+
+int i0 = get_global_id(0);
+
+
+ float v0 = i0;
+
+private bool v1;
+
+
+v1 = xs[i0] > 0.5f;
+
+
+bitmap[i0] = v1;
 
 
 }
@@ -35,50 +36,46 @@ kernel void KERNEL2(
   global int* bitmap,
   global int* indices,
   int N) {
-     int ary_size = 0;
-     
 
-int i1 = get_global_id(0);
-if (bitmap[i1]) {
-  result[indices[i1] - 1] = xs[i1];
+
+int id = get_global_id(0);
+if (bitmap[id]) {
+  result[indices[id] - 1] = xs[id];
 }
-int l14 = indices[N - 1];
+int len = indices[N - 1];
 
 
-     
-*result_size = l14;
+     *result_size = len;
 }
 
 kernel void KERNEL3(
-  const global float* restrict xs,
+  const global float* restrict temp0,
   global float* result,
   global int* result_size,
-  int N) {
+  int t4) {
      int ary_size = 0;
-     
-             
-global float* ys = result;
 
+// { "InputArray": "const global float* restrict temp0", "InputLength": "int t4" }
 
 
 {
-  int i2 = get_global_id(0);
-  
- float x = ys[i2];
-
-private float temp4;
+  int i1 = get_global_id(0);
 
 
-private float temp3;
-temp3 = 2.0f;
-     
-temp4 = x * temp3;
-            
-     
-  result[i2] = temp4;
+ float v2 = i1;
+
+private float v3;
+
+
+v3 = temp0[i1] * 2.0f;
+
+
+  result[i1] = v3;
 }
-                 
-     
+
+
+
+*result_size = t4;
 }
 
 
@@ -101,5 +98,5 @@ kernel void prefix_sum(global int *xs, global int *ys, int i) {
     out[j] = in[j] + in[j - powiof2];
   }
 }
-    
-      
+
+

@@ -1,4 +1,4 @@
-// {"ChunkSize":5,"InputSize":1,"KernelCount":2}
+// {"ChunkSize":5,"InputSize":1,"KernelCount":2,"InputTypes":["float*"],"ResultType":"float*"}
 
 kernel void KERNEL(
   const global float* restrict xs,
